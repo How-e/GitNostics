@@ -64,6 +64,8 @@ describe('pull request check source', () => {
       });
       expect(result.pr).toMatchObject({
         headSha: 'head',
+        checksSha: 'merge',
+        checksSource: 'merge',
         checksComplete: true,
         checks: [{ name: 'build', status: 'failure' }],
       });
@@ -91,6 +93,8 @@ describe('pull request check source', () => {
         : json(ref === 'head' ? [{ context: 'lint', state: 'success' }] : []),
     );
     expect(result.pr).toMatchObject({
+      checksSha: 'head',
+      checksSource: 'head',
       checksComplete: true,
       checks: [
         { name: 'build', status: 'success' },
@@ -120,6 +124,8 @@ describe('pull request check source', () => {
     async (metadata) => {
       const result = await snapshot(() => json({ check_runs: [check('success')] }), metadata);
       expect(result.pr).toMatchObject({ checks: [], checksComplete: false });
+      expect(result.pr.checksSha).toBeUndefined();
+      expect(result.pr.checksSource).toBeUndefined();
       expect(result.snapshot.collectionState?.pullRequests).toBe(false);
       expect(result.requests.some((path) => /\/(check-runs|statuses)$/.test(path))).toBe(false);
       expect(result.snapshot.warnings).toContain(
@@ -151,6 +157,7 @@ describe('pull request check source', () => {
             : json([]),
       );
       expect(result.pr).toMatchObject({ checks: [], checksComplete: false });
+      expect(result.pr).toMatchObject({ checksSha: 'merge', checksSource: 'merge' });
       expect(result.requests.some((path) => path.includes('/commits/head/'))).toBe(false);
     },
   );

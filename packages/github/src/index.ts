@@ -1037,6 +1037,7 @@ export class GitHubClient {
       ),
     ]);
     let { checks, statuses } = checkEvidence;
+    let checksSha = checkRef;
     if (!checkRef)
       warnings.push(
         `Pull request #${number(pr.number)} check source is not ready; refresh after GitHub recomputes mergeability`,
@@ -1050,8 +1051,10 @@ export class GitHubClient {
       statuses?.complete &&
       checks.items.length === 0 &&
       statuses.items.length === 0
-    )
+    ) {
       ({ checks, statuses } = await this.commitChecks(parameters, headSha, warnings, signal));
+      checksSha = headSha;
+    }
     const mappedChecks: Check[] = (checks?.items ?? []).map((item) => ({
       name: this.clean(item.name),
       status: item.status !== 'completed' ? 'pending' : this.checkConclusion(item.conclusion),
@@ -1099,6 +1102,12 @@ export class GitHubClient {
       mergeable: typeof pr.mergeable === 'boolean' ? pr.mergeable : null,
       mergeableState: string(pr.mergeable_state, 'unknown'),
       checks: mappedChecks,
+      ...(checksSha
+        ? {
+            checksSha,
+            checksSource: checksSha === headSha ? ('head' as const) : ('merge' as const),
+          }
+        : {}),
       checksComplete,
       reviewsComplete,
       approvals: [...latestReviews.values()].filter((review) => review.state === 'APPROVED').length,
