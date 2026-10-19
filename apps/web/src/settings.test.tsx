@@ -183,3 +183,151 @@ describe('connection discovery', () => {
     expect(screen.queryByText('Discovering…')).toBeNull();
   });
 });
+
+describe('settings drafts during dashboard refreshes', () => {
+  it.each([
+    ['Local history retention', '', 'Artifact review age', '60'],
+    ['Local history retention', '90.5', 'Artifact review age', '60'],
+    ['Artifact review age', '', 'Local history retention', '120'],
+    ['Artifact review age', '30.5', 'Local history retention', '120'],
+  ])(
+    'preserves invalid %s draft %s through refresh and resets it on workspace change',
+    (label, value, otherLabel, otherValue) => {
+      const initial = dashboard();
+      const rendered = render(view(initial));
+      fireEvent.change(screen.getByRole('spinbutton', { name: label }), { target: { value } });
+      const updated = {
+        ...dashboard(),
+        settings: { ...defaultSettings, retentionDays: 120, artifactAgeDays: 60 },
+      };
+      rendered.rerender(view(updated));
+      expect((screen.getByRole('spinbutton', { name: label }) as HTMLInputElement).value).toBe(
+        value,
+      );
+      expect((screen.getByRole('spinbutton', { name: otherLabel }) as HTMLInputElement).value).toBe(
+        otherValue,
+      );
+      for (const button of screen.getAllByRole('button', { name: 'Save preferences' })) {
+        expect((button as HTMLButtonElement).disabled).toBe(true);
+      }
+      rendered.rerender(view(updated, 'demo'));
+      expect(
+        (screen.getByRole('spinbutton', { name: 'Local history retention' }) as HTMLInputElement)
+          .value,
+      ).toBe('120');
+      expect(
+        (screen.getByRole('spinbutton', { name: 'Artifact review age' }) as HTMLInputElement).value,
+      ).toBe('60');
+      expect(screen.getByText('All workspace preferences are saved.')).toBeTruthy();
+    },
+  );
+
+  it('normalizes an acknowledged numeric draft with equivalent formatting', () => {
+    const rendered = render(view(dashboard()));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Local history retention' }), {
+      target: { value: '045' },
+    });
+    rendered.rerender(
+      view({ ...dashboard(), settings: { ...defaultSettings, retentionDays: 45 } }),
+    );
+    expect(
+      (screen.getByRole('spinbutton', { name: 'Local history retention' }) as HTMLInputElement)
+        .value,
+    ).toBe('45');
+    expect(screen.getByText('All workspace preferences are saved.')).toBeTruthy();
+  });
+
+  it('preserves edited fields and incorporates refreshed untouched preferences when saving', () => {
+    const mutate = vi.fn().mockResolvedValue({ ok: true });
+    const initial = dashboard();
+    const rendered = render(view(initial, 'live', mutate));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Local history retention' }), {
+      target: { value: '45' },
+    });
+    const updated = {
+      ...dashboard(),
+      settings: {
+        ...defaultSettings,
+        theme: 'light' as const,
+        notificationsEnabled: false,
+        artifactAgeDays: 60,
+      },
+    };
+    rendered.rerender(view(updated, 'live', mutate));
+    expect(
+      (screen.getByRole('spinbutton', { name: 'Local history retention' }) as HTMLInputElement)
+        .value,
+    ).toBe('45');
+    expect(screen.getByRole('button', { name: 'Light' }).getAttribute('aria-pressed')).toBe('true');
+    expect(
+      (screen.getByRole('checkbox', { name: 'Enable notifications' }) as HTMLInputElement).checked,
+    ).toBe(false);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Save preferences' })[0]!);
+    expect(mutate).toHaveBeenCalledWith(
+      '/api/settings',
+      expect.objectContaining({
+        retentionDays: 45,
+        theme: 'light',
+        notificationsEnabled: false,
+        artifactAgeDays: 60,
+      }),
+      'Workspace preferences saved',
+      'PUT',
+    );
+  });
+
+  it('keeps the local draft when another client changes the same field', () => {
+    const rendered = render(view(dashboard()));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Local history retention' }), {
+      target: { value: '45' },
+    });
+    rendered.rerender(
+      view({ ...dashboard(), settings: { ...defaultSettings, retentionDays: 60 } }),
+    );
+    expect(
+      (screen.getByRole('spinbutton', { name: 'Local history retention' }) as HTMLInputElement)
+        .value,
+    ).toBe('45');
+    rendered.rerender(
+      view({ ...dashboard(), settings: { ...defaultSettings, retentionDays: 75 } }),
+    );
+    expect(
+      (screen.getByRole('spinbutton', { name: 'Local history retention' }) as HTMLInputElement)
+        .value,
+    ).toBe('45');
+    expect(screen.getByText('You have unsaved preferences.')).toBeTruthy();
+  });
+
+  it('applies server updates again after the saved draft is acknowledged', () => {
+    const rendered = render(view(dashboard()));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Local history retention' }), {
+      target: { value: '45' },
+    });
+    rendered.rerender(
+      view({ ...dashboard(), settings: { ...defaultSettings, retentionDays: 45 } }),
+    );
+    expect(screen.getByText('All workspace preferences are saved.')).toBeTruthy();
+    rendered.rerender(
+      view({ ...dashboard(), settings: { ...defaultSettings, retentionDays: 60 } }),
+    );
+    expect(
+      (screen.getByRole('spinbutton', { name: 'Local history retention' }) as HTMLInputElement)
+        .value,
+    ).toBe('60');
+    expect(screen.getByText('All workspace preferences are saved.')).toBeTruthy();
+  });
+
+  it('resets drafts on workspace changes even when settings values share the same object', () => {
+    const initial = dashboard();
+    const rendered = render(view(initial));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Local history retention' }), {
+      target: { value: '45' },
+    });
+    rendered.rerender(view(initial, 'demo'));
+    expect(
+      (screen.getByRole('spinbutton', { name: 'Local history retention' }) as HTMLInputElement)
+        .value,
+    ).toBe(String(defaultSettings.retentionDays));
+    expect(screen.getByText('All workspace preferences are saved.')).toBeTruthy();
+  });
+});
