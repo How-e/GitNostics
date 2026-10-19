@@ -751,6 +751,9 @@ export class GitHubClient {
     if (runs && !runs.complete)
       warnings.push('Workflow history limited to 30 recent runs; rates describe this sample');
     let jobsComplete = true;
+    const protections = new Map<string, Promise<Protection>>([
+      [defaultBranch, Promise.resolve(protection)],
+    ]);
     const pullRequests = (
       await Promise.all(
         (prs?.items ?? [])
@@ -758,7 +761,7 @@ export class GitHubClient {
           .map((pr) =>
             this.optional(
               `Pull request #${number(pr.number)}`,
-              () => this.pullRequest(parameters, pr, defaultBranch, protection, warnings, signal),
+              () => this.pullRequest(parameters, pr, defaultBranch, protections, warnings, signal),
               warnings,
               signal,
             ),
@@ -994,7 +997,7 @@ export class GitHubClient {
     parameters: Parameters,
     listed: Json,
     defaultBranch: string,
-    defaultProtection: Protection,
+    protections: Map<string, Promise<Protection>>,
     warnings: string[],
     signal?: AbortSignal,
   ): Promise<PullRequest> {
@@ -1009,31 +1012,20 @@ export class GitHubClient {
     );
     const headSha = string(object(pr.head).sha);
     const baseBranch = string(object(pr.base).ref, defaultBranch);
-    const [checks, statuses, reviews, protection, comparison] = await Promise.all([
-      this.optional(
-        'Pull request check runs',
-        () =>
-          this.collection(
-            'GET /repos/{owner}/{repo}/commits/{ref}/check-runs',
-            { ...parameters, ref: headSha, filter: 'latest' },
-            'check_runs',
-            signal,
-          ),
-        warnings,
-        signal,
-      ),
-      this.optional(
-        'Pull request commit statuses',
-        () =>
-          this.collection(
-            'GET /repos/{owner}/{repo}/commits/{ref}/statuses',
-            { ...parameters, ref: headSha },
-            undefined,
-            signal,
-          ),
-        warnings,
-        signal,
-      ),
+    let baseProtection = protections.get(baseBranch);
+    if (!baseProtection) {
+      baseProtection = this.protection(parameters, baseBranch, warnings, signal);
+      protections.set(baseBranch, baseProtection);
+    }
+    // GitHub only guarantees a current test merge SHA once mergeability is true.
+    // A SHA retained while mergeability is being computed (or after a conflict)
+    // must not establish the checks GitHub currently requires for this PR.
+    const checkRef =
+      pr.mergeable === true ? string(pr.merge_commit_sha) : pr.mergeable === false ? headSha : '';
+    const [checkEvidence, reviews, protection, comparison] = await Promise.all([
+      checkRef
+        ? this.commitChecks(parameters, checkRef, warnings, signal)
+        : Promise.resolve({ checks: undefined, statuses: undefined }),
       this.optional(
         'Pull request reviews',
         () =>
@@ -1046,9 +1038,7 @@ export class GitHubClient {
         warnings,
         signal,
       ),
-      baseBranch === defaultBranch
-        ? Promise.resolve(defaultProtection)
-        : this.protection(parameters, baseBranch, warnings, signal),
+      baseProtection,
       this.optional(
         'Pull request branch comparison',
         () =>
@@ -1061,6 +1051,25 @@ export class GitHubClient {
         signal,
       ),
     ]);
+    let { checks, statuses } = checkEvidence;
+    let checksSha = checkRef;
+    if (!checkRef)
+      warnings.push(
+        `Pull request #${number(pr.number)} check source is not ready; refresh after GitHub recomputes mergeability`,
+      );
+    // Merge-commit evidence takes precedence whenever either kind is present.
+    // Only two complete empty collections establish that head checks apply.
+    if (
+      checkRef &&
+      checkRef !== headSha &&
+      checks?.complete &&
+      statuses?.complete &&
+      checks.items.length === 0 &&
+      statuses.items.length === 0
+    ) {
+      ({ checks, statuses } = await this.commitChecks(parameters, headSha, warnings, signal));
+      checksSha = headSha;
+    }
     const mappedChecks: Check[] = (checks?.items ?? []).map((item) => ({
       name: this.clean(item.name),
       status: item.status !== 'completed' ? 'pending' : this.checkConclusion(item.conclusion),
@@ -1108,6 +1117,12 @@ export class GitHubClient {
       mergeable: typeof pr.mergeable === 'boolean' ? pr.mergeable : null,
       mergeableState: string(pr.mergeable_state, 'unknown'),
       checks: mappedChecks,
+      ...(checksSha
+        ? {
+            checksSha,
+            checksSource: checksSha === headSha ? ('head' as const) : ('merge' as const),
+          }
+        : {}),
       checksComplete,
       reviewsComplete,
       approvals: [...latestReviews.values()].filter((review) => review.state === 'APPROVED').length,
@@ -1126,6 +1141,41 @@ export class GitHubClient {
         : {}),
       ...(comparison ? { behindBy: number(object(comparison.data).behind_by) } : {}),
     };
+  }
+
+  private async commitChecks(
+    parameters: Parameters,
+    ref: string,
+    warnings: string[],
+    signal?: AbortSignal,
+  ): Promise<{ checks: Collection | undefined; statuses: Collection | undefined }> {
+    const [checks, statuses] = await Promise.all([
+      this.optional(
+        'Pull request check runs',
+        () =>
+          this.collection(
+            'GET /repos/{owner}/{repo}/commits/{ref}/check-runs',
+            { ...parameters, ref, filter: 'latest' },
+            'check_runs',
+            signal,
+          ),
+        warnings,
+        signal,
+      ),
+      this.optional(
+        'Pull request commit statuses',
+        () =>
+          this.collection(
+            'GET /repos/{owner}/{repo}/commits/{ref}/statuses',
+            { ...parameters, ref },
+            undefined,
+            signal,
+          ),
+        warnings,
+        signal,
+      ),
+    ]);
+    return { checks, statuses };
   }
 
   private checkConclusion(input: unknown): Check['status'] {

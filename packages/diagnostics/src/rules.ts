@@ -41,6 +41,27 @@ const prEvidence = (pr: PullRequest): Evidence[] => [
   { label: 'Head commit', value: pr.headSha },
 ];
 
+const checkLocation = (pr: PullRequest): string =>
+  pr.checksSource === 'merge'
+    ? 'the test merge commit'
+    : pr.checksSource === 'head'
+      ? 'the pull request head commit'
+      : 'the collected commit';
+
+const checkEvidence = (pr: PullRequest): Evidence[] => [
+  ...prEvidence(pr),
+  {
+    label: 'Check source',
+    value:
+      pr.checksSource === 'merge'
+        ? 'Test merge commit'
+        : pr.checksSource === 'head'
+          ? 'Pull request head commit'
+          : 'Not recorded in this snapshot',
+  },
+  ...(pr.checksSha ? [{ label: 'Check commit', value: pr.checksSha }] : []),
+];
+
 export const mergeabilityRule: DiagnosticRule = {
   id: 'pr.mergeability',
   version: 1,
@@ -121,7 +142,7 @@ export const requiredChecksRule: DiagnosticRule = {
             (check.appId === undefined || check.appId === -1 || check.appId === result.appId),
         );
         const evidence: Evidence[] = [
-          ...prEvidence(pr),
+          ...checkEvidence(pr),
           { label: 'Required check', value: check.name },
           ...(check.appId === undefined || check.appId === -1
             ? []
@@ -144,10 +165,10 @@ export const requiredChecksRule: DiagnosticRule = {
               confidence: complete ? 'probable' : 'insufficient_evidence',
               title: `PR #${pr.number}: required check “${check.name}” is not reported`,
               explanation: complete
-                ? 'No matching status or check run from the required source was observed on the current head commit. This may block merging; the available evidence does not establish why the check is missing.'
+                ? `No matching status or check run from the required source was observed on ${checkLocation(pr)}. This may block merging; the available evidence does not establish why the check is missing.`
                 : 'Check collection was incomplete, so the absence of this required check cannot establish a blocker.',
               recommendation: complete
-                ? 'Inspect the required check name, producing GitHub App, workflow triggers and current head commit in GitHub. Do not remove the requirement to make the branch mergeable.'
+                ? 'Inspect the required check name, producing GitHub App, workflow triggers and selected check commit in GitHub. Do not remove the requirement to make the branch mergeable.'
                 : 'Restore check-read access or retry synchronization before concluding that the check is absent.',
               resourceUrl: pr.url,
               evidence: [
@@ -171,7 +192,7 @@ export const requiredChecksRule: DiagnosticRule = {
                 severity: failure ? 'high' : 'medium',
                 confidence: 'confirmed',
                 title: `PR #${pr.number}: required check “${check.name}” ${failure ? 'failed' : 'is pending'}`,
-                explanation: `The required check from the configured source is ${failure ? 'failing' : 'pending'} on the pull request head commit.`,
+                explanation: `The required check from the configured source is ${failure ? 'failing' : 'pending'} on ${checkLocation(pr)}.`,
                 recommendation: failure
                   ? 'Inspect the linked check, fix the underlying failure and let the required check run again.'
                   : 'Wait for the check to complete; investigate queued or stuck runners if it remains pending.',

@@ -288,7 +288,7 @@ export function PullRequestsPage() {
                   ))}
                 </div>
               ) : (
-                <p className="muted">No check results were returned for this head revision.</p>
+                <p className="muted">No check results were collected for this pull request.</p>
               )}
             </div>
             <div className="evidence-section">
