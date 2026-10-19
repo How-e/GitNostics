@@ -169,10 +169,15 @@ describe('investigation evidence selection', () => {
     },
   );
 
-  it.each(['pr', 'run'] as const)('closes %s evidence when the resource disappears', (page) => {
-    const rendered = render(view(dashboard(), page));
-    fireEvent.click(screen.getByRole('button', { name: page === 'pr' ? pr.title : run.title }));
-    rendered.rerender(view({ ...dashboard(), repositories: [] }, page));
-    expect(screen.queryByRole('dialog')).toBeNull();
-  });
+  it.each(['pr', 'run'] as const)(
+    'keeps %s evidence closed if a removed resource later returns',
+    (page) => {
+      const rendered = render(view(dashboard(), page));
+      fireEvent.click(screen.getByRole('button', { name: page === 'pr' ? pr.title : run.title }));
+      rendered.rerender(view({ ...dashboard(), repositories: [] }, page));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      rendered.rerender(view(dashboard(), page));
+      expect(screen.queryByRole('dialog')).toBeNull();
+    },
+  );
 });

@@ -74,7 +74,9 @@ export function PullRequestsPage() {
     selection?.mode === mode && selectedRepository && selectedPR
       ? { repository: selectedRepository, pr: selectedPR }
       : undefined;
-  useEffect(() => setSelection(undefined), [mode]);
+  useEffect(() => {
+    if (selection && (selection.mode !== mode || !selectedPR)) setSelection(undefined);
+  }, [selection, mode, selectedPR]);
   const findingsFor = (row: PRRow) =>
     data.findings.filter(
       (f) =>
@@ -328,7 +330,9 @@ export function ActionsPage() {
     selection?.mode === mode && selectedRepository && selectedRun
       ? { repository: selectedRepository, run: selectedRun }
       : undefined;
-  useEffect(() => setSelection(undefined), [mode]);
+  useEffect(() => {
+    if (selection && (selection.mode !== mode || !selectedRun)) setSelection(undefined);
+  }, [selection, mode, selectedRun]);
   const all = data.repositories
     .flatMap((repository) => (repository.snapshot?.runs ?? []).map((run) => ({ repository, run })))
     .filter(
