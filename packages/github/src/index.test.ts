@@ -296,9 +296,10 @@ describe('GitHub authentication boundaries', () => {
       connected: false,
       writesEnabled: false,
     });
-    expect(await client.discoverRepositories()).toEqual([
-      { fullName: 'octo/project', private: true },
-    ]);
+    expect(await client.discoverRepositories()).toEqual({
+      repositories: [{ fullName: 'octo/project', private: true }],
+      complete: true,
+    });
     expect(client.getConnectionStatus()).toMatchObject({ connected: true, writesEnabled: false });
     expect(tokens).toBe(1);
     await vi.advanceTimersByTimeAsync(3600_001);
@@ -315,7 +316,7 @@ describe('GitHub authentication boundaries', () => {
       connected: true,
       writesEnabled: false,
     });
-    expect(await client.discoverRepositories()).toEqual([]);
+    expect(await client.discoverRepositories()).toEqual({ repositories: [], complete: true });
     expect(() => new GitHubClient({ token: 'classic-token', allowDevelopmentPat: true })).toThrow(
       'development',
     );
@@ -539,7 +540,8 @@ describe('GitHub REST collection and mapping', () => {
     );
     const client = new GitHubClient({ ...patConfig(), fetch });
     const repositories = await client.discoverRepositories();
-    expect(repositories).toHaveLength(500);
+    expect(repositories.repositories).toHaveLength(500);
+    expect(repositories.complete).toBe(false);
     expect(fetch).toHaveBeenCalledTimes(5);
     expect(
       fetch.mock.calls.every(([input]) => new URL(String(input)).hostname === 'api.github.com'),
@@ -586,6 +588,49 @@ describe('GitHub REST collection and mapping', () => {
     expect(snapshot.warnings).toContain('Pull requests: GitHub permission denied');
   });
 
+  it('restores verified credential status when a cached discovery response is revalidated', async () => {
+    let attempts = 0;
+    const fetch = transport(() => {
+      attempts++;
+      if (attempts === 1)
+        return json([{ full_name: 'octo/project', private: true }], 200, { etag: '"repos"' });
+      if (attempts === 2) return json({}, 401);
+      return new Response(null, { status: 304 });
+    });
+    const client = new GitHubClient({ ...patConfig(), fetch });
+    await client.discoverRepositories();
+    await expect(client.discoverRepositories()).rejects.toThrow('credentials');
+    expect(client.getConnectionStatus().connected).toBe(false);
+    expect(await client.discoverRepositories()).toMatchObject({
+      repositories: [{ fullName: 'octo/project', private: true }],
+      complete: true,
+    });
+    expect(client.getConnectionStatus()).toMatchObject({ connected: true, writesEnabled: false });
+    expect(client.getConnectionStatus().error).toBeUndefined();
+  });
+
+  it('discards the old validator when a successful response no longer carries an ETag', async () => {
+    let attempts = 0;
+    const fetch = transport((_url, init) => {
+      attempts++;
+      const validator = new Headers(init.headers).get('if-none-match');
+      if (attempts === 1) {
+        expect(validator).toBeNull();
+        return json([{ full_name: 'octo/old', private: false }], 200, { etag: '"old"' });
+      }
+      if (attempts === 2) expect(validator).toBe('"old"');
+      else expect(validator).toBeNull();
+      return json([{ full_name: 'octo/new', private: false }]);
+    });
+    const client = new GitHubClient({ ...patConfig(), fetch });
+    await client.discoverRepositories();
+    await client.discoverRepositories();
+    expect(await client.discoverRepositories()).toMatchObject({
+      repositories: [{ fullName: 'octo/new', private: false }],
+    });
+    expect(attempts).toBe(3);
+  });
+
   it('rejects invalid repository paths before sending requests', async () => {
     const fetch = transport(api());
     const client = new GitHubClient({ fetch });
@@ -596,6 +641,64 @@ describe('GitHub REST collection and mapping', () => {
 });
 
 describe('request reliability', () => {
+  it('rejects repository redirects instead of treating an empty redirect body as metadata', async () => {
+    const fetch = transport(
+      () =>
+        new Response(null, { status: 302, headers: { location: 'https://attacker.invalid/repo' } }),
+    );
+    await expect(new GitHubClient({ fetch }).snapshot('octo/project')).rejects.toThrow(
+      'GitHub request failed',
+    );
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps disconnect final even when a transport completes after cancellation', async () => {
+    let finish: ((response: Response) => void) | undefined;
+    const fetch = transport(
+      () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const client = new GitHubClient({ ...patConfig(), fetch });
+    const pending = client.discoverRepositories();
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    client.disconnect();
+    finish!(json([{ full_name: 'octo/project', private: true }]));
+    await expect(pending).rejects.toThrow('cancelled');
+    expect(client.getConnectionStatus()).toMatchObject({
+      connected: false,
+      identity: 'Disconnected',
+    });
+  });
+
+  it('cancels active requests and queued waiters, then reuses all request slots', async () => {
+    const controller = new AbortController();
+    let cancelRequests = true;
+    const base = api();
+    const fetch = transport(async (url, init) => {
+      if (!cancelRequests) return base(url, init);
+      return new Promise<Response>((_resolve, reject) => {
+        const signal = init.signal!;
+        if (signal.aborted) reject(signal.reason);
+        else signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+    });
+    const client = new GitHubClient({ fetch });
+    const pending = Promise.allSettled(
+      Array.from({ length: 8 }, () => client.snapshot('octo/project', controller.signal)),
+    );
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(4));
+    controller.abort();
+    const outcomes = await pending;
+    expect(outcomes.every((outcome) => outcome.status === 'rejected')).toBe(true);
+    for (const outcome of outcomes)
+      if (outcome.status === 'rejected') expect(outcome.reason.name).toBe('AbortError');
+    expect(fetch).toHaveBeenCalledTimes(4);
+    cancelRequests = false;
+    expect(await client.snapshot('octo/project')).toMatchObject({ name: 'project' });
+  });
+
   it('retries bounded transient reads and tracks rate-limit metadata', async () => {
     vi.useFakeTimers();
     let attempts = 0;

@@ -30,7 +30,10 @@ async function harness(options: { writes?: boolean; auth?: boolean; permission?:
   const github: GitHubService = {
     snapshot: vi.fn(async () => snapshot()),
     getConnectionStatus: () => ({ ...connection }),
-    discoverRepositories: vi.fn(async () => [{ fullName: 'northstar/api', private: true }]),
+    discoverRepositories: vi.fn(async () => ({
+      repositories: [{ fullName: 'northstar/api', private: true }],
+      complete: true,
+    })),
     execute: vi.fn(async () => undefined),
     disconnect: vi.fn(() => {
       connection.connected = false;
@@ -82,6 +85,79 @@ afterEach(async () => {
 });
 
 describe('HTTP workspace API with a synthetic GitHub service', () => {
+  it('protects discovery, preserves incomplete results, and sanitizes upstream errors', async () => {
+    const { app, github, get } = await harness({ auth: true });
+    expect(
+      (await app.inject({ url: '/api/connection/discovery', headers: { host } })).statusCode,
+    ).toBe(401);
+    expect(github.discoverRepositories).not.toHaveBeenCalled();
+    vi.mocked(github.discoverRepositories).mockResolvedValueOnce({
+      repositories: [{ fullName: 'northstar/api', private: true }],
+      complete: false,
+    });
+    const result = await get('/api/connection/discovery');
+    expect(result.statusCode).toBe(200);
+    expect(result.json()).toEqual({
+      repositories: [{ fullName: 'northstar/api', private: true }],
+      complete: false,
+    });
+    vi.mocked(github.discoverRepositories).mockRejectedValueOnce(
+      new Error('401 Bearer synthetic-only'),
+    );
+    const failure = await get('/api/connection/discovery');
+    expect(failure.statusCode).toBe(502);
+    expect(failure.body).not.toContain('synthetic-only');
+    expect(failure.json().error).toContain('[REDACTED');
+    expect(github.execute).not.toHaveBeenCalled();
+  });
+
+  it('refuses live discovery and queue requests after disconnect without adding local records', async () => {
+    const { github, store, post, get } = await harness();
+    expect((await post('/api/connection/disconnect')).statusCode).toBe(200);
+    expect((await get('/api/connection/discovery')).statusCode).toBe(409);
+    expect((await post('/api/repositories', { fullName: 'northstar/api' })).statusCode).toBe(409);
+    expect((await post('/api/sync')).statusCode).toBe(409);
+    expect(store.repositories('live')).toEqual([]);
+    expect(github.discoverRepositories).not.toHaveBeenCalled();
+    expect(github.snapshot).not.toHaveBeenCalled();
+    expect((await post('/api/demo/reset')).statusCode).toBe(200);
+    expect((await post('/api/sync?mode=demo')).statusCode).toBe(200);
+  });
+
+  it('retains selected repositories, partial evidence, and last success across failure and restart', async () => {
+    const context = await harness();
+    const partial = snapshot();
+    partial.warnings = ['Synthetic permission-limited evidence'];
+    partial.collectionState = { pullRequests: false, runs: false, artifacts: false, config: false };
+    vi.mocked(context.github.snapshot).mockResolvedValueOnce(partial);
+    await context.post('/api/repositories', { fullName: 'northstar/api' });
+    await vi.waitFor(() => expect(context.store.repositories('live')[0]!.syncStatus).toBe('idle'));
+    const successful = context.store.repositories('live')[0]!;
+    expect(successful.syncedAt).toBeTruthy();
+    vi.mocked(context.github.snapshot).mockRejectedValueOnce(
+      new Error('403 Synthetic access removed'),
+    );
+    await context.post('/api/sync');
+    await vi.waitFor(() => expect(context.store.repositories('live')[0]!.syncStatus).toBe('error'));
+    await context.app.close();
+    const restarted = await createApp({
+      config: context.config,
+      github: context.github,
+      background: false,
+    });
+    cleanups.push(() => restarted.app.close());
+    const record = restarted.store.repositories('live')[0]!;
+    expect(record).toMatchObject({
+      fullName: 'northstar/api',
+      selected: true,
+      syncStatus: 'error',
+      syncedAt: successful.syncedAt,
+      snapshot: { warnings: partial.warnings, collectionState: partial.collectionState },
+    });
+    expect(restarted.store.repositories('demo')).toEqual([]);
+    expect(context.github.execute).not.toHaveBeenCalled();
+  });
+
   it('returns a healthy empty live dashboard and refuses malformed mode/input', async () => {
     const { get, post, github } = await harness();
     expect((await get('/api/health')).json()).toMatchObject({ status: 'ok', database: 'ready' });

@@ -37,11 +37,15 @@ Domain endpoints accept `?mode=live` or `?mode=demo`; omission selects `live`. T
 | `PATCH /api/findings/:id?mode=…`               | `{status: "acknowledged" \| "suppressed" \| "active"}`; manual lifecycle change. Findings resolve through supported observation, not arbitrary client assertion.                                                                   |
 | `POST /api/baselines?mode=…`                   | `{repository: "owner/repo"}`; save accessible current snapshot values as expected configuration and reevaluate drift.                                                                                                              |
 | `POST /api/notifications/:id/read?mode=…`      | Mark an in-app notification read.                                                                                                                                                                                                  |
-| `GET /api/connection/discovery`                | Discover repositories available to the configured installation/development identity; upstream errors remain explicit.                                                                                                              |
+| `GET /api/connection/discovery`                | Return `{repositories: {fullName, private}[], complete: boolean}` for the configured installation/development identity; capped at five pages / 500 repositories. Upstream errors remain explicit.                                  |
 | `POST /api/connection/disconnect`              | Stop integration use and clear in-memory credentials/tokens/previews. Remove environment/key configuration before restart to stay disconnected. Does not revoke GitHub installation permissions or erase local repository history. |
 | `POST /api/backup`                             | Create a consistent local SQLite backup under a fixed server-owned `DATA_DIR/backups` name. Returns filename/message; does not export file contents or credentials.                                                                |
 | `POST /api/actions/preview?mode=…`             | A validated action request; returns impact, authorization, confirmation text, and five-minute expiry.                                                                                                                              |
 | `POST /api/actions/execute?mode=…`             | `{previewId, confirmation}`; execute or simulate only a current authorized preview.                                                                                                                                                |
+
+## Discovery and disconnect
+
+Discovery reports `complete: false` when the five-page limit is reached and additional repositories remain. Preserve the returned choices and show the incomplete-coverage warning; never interpret an omitted repository as proof that it is inaccessible or removed. The discovery cap is separate from the 100 monitored-repository limit. A manually disconnected connection returns `409` for discovery, live repository addition, and live sync, before adding records or queueing work. Restart after configuring access to reconnect; demo mode and cached live data remain separate.
 
 ## Settings contract
 

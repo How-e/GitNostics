@@ -8,6 +8,7 @@ import type {
   ConnectionStatus,
   PullRequest,
   RepositoryConfig,
+  RepositoryDiscovery,
   RepositorySnapshot,
   WorkflowJob,
   WorkflowRun,
@@ -284,6 +285,13 @@ export class GitHubClient {
       this.status.rateLimit = { remaining, limit, resetAt: new Date(reset * 1000).toISOString() };
   }
 
+  private markConnected(): void {
+    if (this.status.mode === 'public') return;
+    this.status.connected = true;
+    this.status.writesEnabled = this.status.mode === 'app' && this.allowWrites;
+    delete this.status.error;
+  }
+
   private async request(
     route: string,
     parameters: Parameters = {},
@@ -306,18 +314,25 @@ export class GitHubClient {
             },
             request: { signal: AbortSignal.any([combined, timeout]) },
           })) as ApiResponse;
+          if (combined.aborted || !this.octokit) throw abortError();
+          if (
+            result.status >= 300 &&
+            !(
+              result.status === 302 &&
+              route === 'GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs'
+            )
+          )
+            throw new GitHubError('Unexpected GitHub redirect', result.status);
           this.trackRate(result.headers);
-          if (this.status.mode !== 'public') {
-            this.status.connected = true;
-            this.status.writesEnabled = this.status.mode === 'app' && this.allowWrites;
-            delete this.status.error;
-          }
-          if (conditional && route.startsWith('GET ') && result.headers.etag) {
-            const bytes = Buffer.byteLength(JSON.stringify(result.data) ?? '');
+          this.markConnected();
+          if (conditional && route.startsWith('GET ')) {
             if (this.cache.has(key)) {
               this.cacheBytes -= this.cache.get(key)!.bytes;
               this.cache.delete(key);
             }
+          }
+          if (conditional && route.startsWith('GET ') && result.headers.etag) {
+            const bytes = Buffer.byteLength(JSON.stringify(result.data) ?? '');
             while (
               this.cache.size &&
               (this.cache.size >= 300 || this.cacheBytes + bytes > 16 * 1024 * 1024)
@@ -340,12 +355,19 @@ export class GitHubClient {
         } catch (error) {
           const status = statusOf(error);
           const headers = headersOf(error);
+          if (combined.aborted || !this.octokit) throw abortError();
           this.trackRate(headers);
-          if (status === 304 && cached)
+          if (status === 304 && cached) {
+            this.markConnected();
             return { data: cached.data, headers: { ...cached.headers, ...headers }, status: 304 };
+          }
           // Log download redirects are handled separately without forwarding credentials.
-          if (status === 302 && headers.location) return { data: null, headers, status };
-          if (combined.aborted) throw abortError();
+          if (
+            status === 302 &&
+            headers.location &&
+            route === 'GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs'
+          )
+            return { data: null, headers, status };
           if (timeout.aborted) throw new GitHubError('GitHub request timed out');
           if (status === 401 && this.status.mode !== 'public') {
             this.status.connected = false;
@@ -448,10 +470,8 @@ export class GitHubClient {
     return { owner, repo };
   }
 
-  async discoverRepositories(
-    signal?: AbortSignal,
-  ): Promise<{ fullName: string; private: boolean }[]> {
-    if (this.status.mode === 'public') return [];
+  async discoverRepositories(signal?: AbortSignal): Promise<RepositoryDiscovery> {
+    if (this.status.mode === 'public') return { repositories: [], complete: true };
     const result =
       this.status.mode === 'app'
         ? await this.collection('GET /installation/repositories', {}, 'repositories', signal)
@@ -461,9 +481,12 @@ export class GitHubClient {
             undefined,
             signal,
           );
-    return result.items
-      .filter((repo) => repoNameSchema.safeParse(repo.full_name).success)
-      .map((repo) => ({ fullName: string(repo.full_name), private: boolean(repo.private) }));
+    return {
+      repositories: result.items
+        .filter((repo) => repoNameSchema.safeParse(repo.full_name).success)
+        .map((repo) => ({ fullName: string(repo.full_name), private: boolean(repo.private) })),
+      complete: result.complete,
+    };
   }
 
   private async optional<T>(

@@ -335,7 +335,9 @@ export function App() {
                       ? 'Public repository mode'
                       : 'Connection unavailable'
                     : data?.connection.connected
-                      ? 'GitHub App connected'
+                      ? data.connection.mode === 'development_pat'
+                        ? 'Development PAT connected'
+                        : 'GitHub App connected'
                       : 'Integration unverified'}
               </strong>
               <span>

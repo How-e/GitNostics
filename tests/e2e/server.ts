@@ -15,7 +15,7 @@ const github: GitHubService = {
     identity: 'Isolated browser test',
     writesEnabled: false,
   }),
-  discoverRepositories: async () => [],
+  discoverRepositories: async () => ({ repositories: [], complete: true }),
   snapshot: async () => {
     throw new Error('GitHub reads are disabled in the browser test. Explore the demo workspace.');
   },

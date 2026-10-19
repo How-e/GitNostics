@@ -257,6 +257,10 @@ export const defaultSettings: AppSettings = {
   minimumSeverity: 'low',
   suppressedRules: [],
 };
+export interface RepositoryDiscovery {
+  repositories: { fullName: string; private: boolean }[];
+  complete: boolean;
+}
 export interface ConnectionStatus {
   mode: 'public' | 'app' | 'development_pat';
   connected: boolean;

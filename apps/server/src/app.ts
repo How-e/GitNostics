@@ -17,6 +17,7 @@ import {
   type ConnectionStatus,
   type Dashboard,
   type DataMode,
+  type RepositoryDiscovery,
 } from '@gitnostics/shared';
 import {
   authoritativeFindingTypes,
@@ -34,7 +35,7 @@ import { Backups } from './backups';
 
 export interface GitHubService extends SnapshotClient {
   getConnectionStatus(): ConnectionStatus;
-  discoverRepositories(signal?: AbortSignal): Promise<{ fullName: string; private: boolean }[]>;
+  discoverRepositories(signal?: AbortSignal): Promise<RepositoryDiscovery>;
   execute(request: ActionRequest, signal?: AbortSignal): Promise<void>;
   disconnect(): void;
 }
@@ -221,7 +222,14 @@ export async function createApp(
           'Demo repositories are fixed local fixtures. Switch to connected mode to add a repository.',
       });
     const { fullName } = z.object({ fullName: repoNameSchema }).strict().parse(request.body);
-    if (store.repositories(mode).length >= 100)
+    if (disconnected)
+      return reply
+        .code(409)
+        .send({ error: 'Connection disconnected. Restart after configuring access.' });
+    if (
+      store.repositories(mode).length >= 100 &&
+      !store.repositories(mode).some((r) => r.fullName === fullName)
+    )
       return reply
         .code(400)
         .send({ error: 'This deployment supports up to 100 monitored repositories.' });
@@ -259,6 +267,10 @@ export async function createApp(
   });
   app.post('/api/sync', async (request) => {
     const mode = modeOf(request.query);
+    if (mode === 'live' && disconnected)
+      throw Object.assign(new Error('Connection disconnected. Restart after configuring access.'), {
+        statusCode: 409,
+      });
     const body = z
       .object({ repository: repoNameSchema.optional() })
       .strict()
@@ -318,8 +330,12 @@ export async function createApp(
   });
   let disconnected = false;
   app.get('/api/connection/discovery', async (_request, reply) => {
+    if (disconnected)
+      return reply
+        .code(409)
+        .send({ error: 'Connection disconnected. Restart after configuring access.' });
     try {
-      return { repositories: await github.discoverRepositories(AbortSignal.timeout(30_000)) };
+      return await github.discoverRepositories(AbortSignal.timeout(30_000));
     } catch (error) {
       return reply.code(502).send({ error: safeMessage(error) });
     }

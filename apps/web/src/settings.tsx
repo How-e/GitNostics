@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   FlaskConical,
   FolderGit2,
@@ -11,7 +11,7 @@ import {
   Sun,
   Unplug,
 } from 'lucide-react';
-import type { AppSettings } from '@gitnostics/shared';
+import type { AppSettings, RepositoryDiscovery } from '@gitnostics/shared';
 import { api, errorMessage } from './api';
 import { useApp } from './context';
 import { Badge, Empty, Modal, PageHeading, Panel } from './components';
@@ -26,6 +26,9 @@ export function SettingsPage({ exploreDemo }: { exploreDemo: () => void }) {
   const [settings, setSettings] = useState<AppSettings>(data.settings);
   const [discovering, setDiscovering] = useState(false);
   const [discovered, setDiscovered] = useState<DiscoveredRepository[]>();
+  const [discoveryComplete, setDiscoveryComplete] = useState(true);
+  const discoveryRequest = useRef<AbortController | null>(null);
+  const discoveryContext = useRef({ workspaceMode: mode, connection: data.connection });
   const [discoveryError, setDiscoveryError] = useState('');
   const [query, setQuery] = useState('');
   const [disconnect, setDisconnect] = useState(false);
@@ -33,24 +36,42 @@ export function SettingsPage({ exploreDemo }: { exploreDemo: () => void }) {
     setSettings(data.settings);
   }, [data.settings]);
   useEffect(() => {
+    const previous = discoveryContext.current;
+    discoveryContext.current = { workspaceMode: mode, connection: data.connection };
+    const changed =
+      previous.workspaceMode !== mode ||
+      previous.connection.mode !== data.connection.mode ||
+      previous.connection.identity !== data.connection.identity ||
+      (previous.connection.connected && !data.connection.connected);
+    if (!changed) return;
+    discoveryRequest.current?.abort();
     setDiscovered(undefined);
     setDiscoveryError('');
-  }, [mode]);
+    setDiscovering(false);
+    setDiscoveryComplete(true);
+    setQuery('');
+  }, [mode, data.connection]);
+  useEffect(() => () => discoveryRequest.current?.abort(), []);
   const change = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) =>
     setSettings((previous) => ({ ...previous, [key]: value }));
   const dirty = JSON.stringify(settings) !== JSON.stringify(data.settings);
   const discover = async () => {
+    discoveryRequest.current?.abort();
+    const controller = new AbortController();
+    discoveryRequest.current = controller;
     setDiscovering(true);
     setDiscoveryError('');
     try {
-      const result = await api<{ repositories: DiscoveredRepository[] }>(
-        '/api/connection/discovery',
-      );
+      const result = await api<RepositoryDiscovery>('/api/connection/discovery', {
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
       setDiscovered(result.repositories);
+      setDiscoveryComplete(result.complete);
     } catch (error) {
-      setDiscoveryError(errorMessage(error));
+      if (!controller.signal.aborted) setDiscoveryError(errorMessage(error));
     } finally {
-      setDiscovering(false);
+      if (!controller.signal.aborted) setDiscovering(false);
     }
   };
   return (
@@ -82,7 +103,7 @@ export function SettingsPage({ exploreDemo }: { exploreDemo: () => void }) {
                   ? 'Demo simulation'
                   : data.connection.connected
                     ? 'Connected'
-                    : 'Public mode'}
+                    : 'Connection unavailable'}
               </Badge>
             }
           >
@@ -164,6 +185,12 @@ export function SettingsPage({ exploreDemo }: { exploreDemo: () => void }) {
               )}
               {discovered && (
                 <div className="discovery-results">
+                  {!discoveryComplete && (
+                    <p className="permission-notice" role="status">
+                      Discovery reached its 500-repository limit. This list is incomplete. Add a
+                      missing accessible owner/repository from Repositories.
+                    </p>
+                  )}
                   <label className="form-field">
                     Find an accessible repository
                     <input
@@ -207,10 +234,15 @@ export function SettingsPage({ exploreDemo }: { exploreDemo: () => void }) {
                     })}
                   {!discovered.length && (
                     <Empty title="No repositories returned">
-                      Public mode does not enumerate an account. Add a public owner/repository from
-                      Repositories, or configure a GitHub App.
+                      {data.connection.mode === 'public'
+                        ? 'Public mode does not enumerate an account. Add a public owner/repository from Repositories, or configure a GitHub App.'
+                        : 'No accessible repositories were returned for this connection. Review installation repository access, or add an accessible owner/repository from Repositories.'}
                     </Empty>
                   )}
+                  {discovered.length > 0 &&
+                    !discovered.some((repository) =>
+                      repository.fullName.toLowerCase().includes(query.toLowerCase()),
+                    ) && <Empty title="No matching repositories">Try another search.</Empty>}
                 </div>
               )}
             </div>
