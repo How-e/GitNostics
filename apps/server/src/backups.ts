@@ -3,6 +3,9 @@ import { existsSync, mkdirSync, readdirSync, renameSync, statSync, unlinkSync } 
 import { resolve } from 'node:path';
 import type { Store } from './db';
 
+const backupFilename = /^gitnostics-[0-9TZ-]+-[a-f0-9]{8}\.sqlite$/;
+const interruptedCopyAgeMs = 24 * 3600_000;
+
 /** Fixed local destination and a seven-file rotation; callers cannot supply paths. */
 export class Backups {
   private pending?: Promise<string>;
@@ -15,10 +18,23 @@ export class Backups {
   }
   private inventory() {
     mkdirSync(this.directory, { recursive: true, mode: 0o700 });
-    return readdirSync(this.directory, { withFileTypes: true })
-      .filter(
-        (entry) => entry.isFile() && /^gitnostics-[0-9TZ-]+-[a-f0-9]{8}\.sqlite$/.test(entry.name),
-      )
+    const entries = readdirSync(this.directory, { withFileTypes: true });
+    // A killed process cannot execute catch cleanup. Reclaim only generated copies
+    // untouched for a day, and never clean while this instance has an active copy.
+    // Fresh partials may belong to another instance and must be left alone.
+    if (!this.pending)
+      for (const entry of entries) {
+        if (
+          !entry.isFile() ||
+          !entry.name.endsWith('.partial') ||
+          !backupFilename.test(entry.name.slice(0, -'.partial'.length))
+        )
+          continue;
+        const partial = resolve(this.directory, entry.name);
+        if (Date.now() - statSync(partial).mtimeMs >= interruptedCopyAgeMs) unlinkSync(partial);
+      }
+    return entries
+      .filter((entry) => entry.isFile() && backupFilename.test(entry.name))
       .map((entry) => ({
         name: entry.name,
         modified: statSync(resolve(this.directory, entry.name)).mtimeMs,
