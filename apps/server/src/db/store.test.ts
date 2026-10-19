@@ -179,6 +179,59 @@ describe('SQLite persistence', () => {
     expect(() => open(file)).toThrow('Database schema is newer');
   });
 
+  it('upgrades existing task history for indexed latest-attempt lookups with stable ties', () => {
+    const file = path();
+    const db = new DatabaseSync(file);
+    db.exec(
+      'CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY,name TEXT NOT NULL,applied_at TEXT NOT NULL)',
+    );
+    for (const migration of migrations.filter((entry) => entry.version <= 4)) {
+      db.exec(migration.sql);
+      db.prepare('INSERT INTO schema_migrations VALUES(?,?,?)').run(
+        migration.version,
+        migration.name,
+        '2026-01-01T00:00:00Z',
+      );
+    }
+    const repository = db.prepare('INSERT INTO repositories(mode,full_name) VALUES(?,?)');
+    repository.run('live', 'example/project');
+    repository.run('live', 'example/other');
+    repository.run('demo', 'example/project');
+    const insert = db.prepare(
+      `INSERT INTO sync_tasks(id,mode,repository,status,created_at,finished_at)
+       VALUES(?,?,?,'completed',?,?)`,
+    );
+    insert.run('older', 'live', 'example/project', '2026-01-01', '2026-01-02');
+    insert.run('first-tie', 'live', 'example/project', '2026-01-03', '2026-01-04');
+    insert.run('last-tie', 'live', 'example/project', '2026-01-03', '2026-01-05');
+    insert.run('other-repository', 'live', 'example/other', '2026-01-06', '2026-01-07');
+    insert.run('other-mode', 'demo', 'example/project', '2026-01-08', '2026-01-09');
+    db.close();
+
+    const store = open(file);
+    expect(store.latestSyncAttemptAt('live', 'example/project')).toBe('2026-01-05');
+    expect(store.latestSyncAttemptAt('live', 'example/other')).toBe('2026-01-07');
+    expect(store.latestSyncAttemptAt('demo', 'example/project')).toBe('2026-01-09');
+    expect(store.tasks('live')).toHaveLength(4);
+    const inspected = new DatabaseSync(file);
+    try {
+      const plan = inspected
+        .prepare(
+          `EXPLAIN QUERY PLAN SELECT COALESCE(finished_at,started_at,created_at) AS attempted_at
+           FROM sync_tasks WHERE mode=? AND repository=? ORDER BY created_at DESC,rowid DESC LIMIT 1`,
+        )
+        .all('live', 'example/project')
+        .map((row) => String(row.detail));
+      expect(plan.join('\n')).toContain('USING INDEX sync_tasks_by_repository');
+      expect(plan.join('\n')).not.toContain('TEMP B-TREE');
+      expect(
+        inspected.prepare('SELECT COUNT(*) AS count FROM schema_migrations').get()?.count,
+      ).toBe(migrations.length);
+    } finally {
+      inspected.close();
+    }
+  });
+
   it('isolates every category of demo and live data', async () => {
     const store = open();
     store.saveSnapshot('demo', snapshot());
