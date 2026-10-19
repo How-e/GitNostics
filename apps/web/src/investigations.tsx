@@ -1,5 +1,5 @@
 import { DeferredContent } from './deferred-content';
-import { lazy, useState } from 'react';
+import { lazy, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   ArrowRight,
@@ -56,10 +56,25 @@ const DurationChart = lazy(() =>
 );
 
 export function PullRequestsPage() {
-  const { data } = useApp();
+  const { data, mode } = useApp();
   const [params] = useSearchParams();
   const q = (params.get('q') ?? '').toLowerCase();
-  const [selected, setSelected] = useState<PRRow>();
+  const [selection, setSelection] = useState<{
+    mode: typeof mode;
+    repository: string;
+    number: number;
+  }>();
+  const selectedRepository = data.repositories.find(
+    (repository) => repository.fullName === selection?.repository,
+  );
+  const selectedPR = selectedRepository?.snapshot?.pullRequests.find(
+    (pr) => pr.number === selection?.number,
+  );
+  const selected: PRRow | undefined =
+    selection?.mode === mode && selectedRepository && selectedPR
+      ? { repository: selectedRepository, pr: selectedPR }
+      : undefined;
+  useEffect(() => setSelection(undefined), [mode]);
   const findingsFor = (row: PRRow) =>
     data.findings.filter(
       (f) =>
@@ -113,7 +128,16 @@ export function PullRequestsPage() {
               <article className="pr-row" key={`${row.repository.fullName}:${row.pr.number}`}>
                 <GitPullRequest className={findingsFor(row).length ? 'warn' : 'good'} size={21} />
                 <div className="pr-main">
-                  <button className="title-button" onClick={() => setSelected(row)}>
+                  <button
+                    className="title-button"
+                    onClick={() =>
+                      setSelection({
+                        mode,
+                        repository: row.repository.fullName,
+                        number: row.pr.number,
+                      })
+                    }
+                  >
                     {row.pr.title}
                   </button>
                   <div className="finding-meta">
@@ -148,7 +172,16 @@ export function PullRequestsPage() {
                 <div className="pr-right">
                   <Cached repository={row.repository} />
                   <ExternalLink href={row.pr.url}>GitHub</ExternalLink>
-                  <button className="text-link" onClick={() => setSelected(row)}>
+                  <button
+                    className="text-link"
+                    onClick={() =>
+                      setSelection({
+                        mode,
+                        repository: row.repository.fullName,
+                        number: row.pr.number,
+                      })
+                    }
+                  >
                     Investigate <ArrowRight size={13} />
                   </button>
                 </div>
@@ -165,7 +198,7 @@ export function PullRequestsPage() {
       <Modal
         open={Boolean(selected)}
         onOpenChange={(open) => {
-          if (!open) setSelected(undefined);
+          if (!open) setSelection(undefined);
         }}
         title={selected ? `#${selected.pr.number} ${selected.pr.title}` : 'Pull request'}
         description="Merge diagnostics from the most recently cached GitHub evidence."
@@ -279,10 +312,23 @@ export function PullRequestsPage() {
 }
 
 export function ActionsPage() {
-  const { data, busy, preview } = useApp();
+  const { data, mode, busy, preview } = useApp();
   const [params] = useSearchParams();
   const q = (params.get('q') ?? '').toLowerCase();
-  const [selected, setSelected] = useState<RunRow>();
+  const [selection, setSelection] = useState<{
+    mode: typeof mode;
+    repository: string;
+    id: number;
+  }>();
+  const selectedRepository = data.repositories.find(
+    (repository) => repository.fullName === selection?.repository,
+  );
+  const selectedRun = selectedRepository?.snapshot?.runs.find((run) => run.id === selection?.id);
+  const selected: RunRow | undefined =
+    selection?.mode === mode && selectedRepository && selectedRun
+      ? { repository: selectedRepository, run: selectedRun }
+      : undefined;
+  useEffect(() => setSelection(undefined), [mode]);
   const all = data.repositories
     .flatMap((repository) => (repository.snapshot?.runs ?? []).map((run) => ({ repository, run })))
     .filter(
@@ -480,7 +526,12 @@ export function ActionsPage() {
                   <Status value={row.run.conclusion ?? row.run.status} />
                 </div>
                 <div className="run-main">
-                  <button className="title-button" onClick={() => setSelected(row)}>
+                  <button
+                    className="title-button"
+                    onClick={() =>
+                      setSelection({ mode, repository: row.repository.fullName, id: row.run.id })
+                    }
+                  >
                     {row.run.title || row.run.name}
                   </button>
                   <div className="finding-meta">
@@ -499,7 +550,12 @@ export function ActionsPage() {
                   <span className="mono">{duration(row.run.durationSeconds)}</span>
                   <time title={dateLabel(row.run.createdAt)}>{relative(row.run.createdAt)}</time>
                 </div>
-                <button className="button small-button" onClick={() => setSelected(row)}>
+                <button
+                  className="button small-button"
+                  onClick={() =>
+                    setSelection({ mode, repository: row.repository.fullName, id: row.run.id })
+                  }
+                >
                   Inspect <ArrowUpRight size={13} />
                 </button>
               </div>
@@ -515,7 +571,7 @@ export function ActionsPage() {
       <Modal
         open={Boolean(selected)}
         onOpenChange={(open) => {
-          if (!open) setSelected(undefined);
+          if (!open) setSelection(undefined);
         }}
         title={selected?.run.title || selected?.run.name || 'Workflow run'}
         description="Cached run metadata, job results, and available redacted log excerpts."
@@ -586,7 +642,7 @@ export function ActionsPage() {
                   disabled={busy || selected.run.status !== 'completed'}
                   onClick={() => {
                     const row = selected;
-                    setSelected(undefined);
+                    setSelection(undefined);
                     void preview({
                       repository: row.repository.fullName,
                       kind: 'rerun_failed',
@@ -602,7 +658,7 @@ export function ActionsPage() {
                   disabled={busy || selected.run.status !== 'completed'}
                   onClick={() => {
                     const row = selected;
-                    setSelected(undefined);
+                    setSelection(undefined);
                     void preview({
                       repository: row.repository.fullName,
                       kind: 'rerun',
