@@ -84,6 +84,6 @@ See [development](docs/DEVELOPMENT.md), [architecture](docs/ARCHITECTURE.md), [A
 
 Before uploading, follow the [publication privacy checklist](docs/PUBLICATION_PRIVACY.md). Ignore rules do not remove committed files, and Git history includes author/committer identities.
 
-Read the [data handling notice](docs/PRIVACY.md), [support guidance](docs/SUPPORT.md), and [integration readiness checklist](docs/INTEGRATION_READINESS.md) before sharing or operating an installation. Contact [GitNostics@protonmail.com](mailto:GitNostics@protonmail.com) for support. External mailbox receipt and hosted publication checks remain unverified.
+Read the [data handling notice](docs/PRIVACY.md), [support guidance](docs/SUPPORT.md), and [integration readiness checklist](docs/INTEGRATION_READINESS.md) before sharing or operating an installation. Contact [GitNostics@protonmail.com](mailto:GitNostics@protonmail.com) for support. External mailbox receipt and App homepage settings remain unverified; hosted verification evidence is recorded in implementation status.
 
 Licensed under the [MIT License](LICENSE).
