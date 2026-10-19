@@ -1,10 +1,27 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultSettings, type Dashboard } from '@gitnostics/shared';
 import { App } from './App';
+import { useApp } from './context';
+
+vi.mock('./pages', () => ({
+  OverviewPage: () => {
+    const { preview } = useApp();
+    return (
+      <>
+        <h1>Good diagnostics start</h1>
+        <button
+          onClick={() => void preview({ repository: 'example/project', kind: 'rerun', runId: 10 })}
+        >
+          Prepare preview
+        </button>
+      </>
+    );
+  },
+}));
 
 const data: Dashboard = {
   mode: 'live',
@@ -48,6 +65,7 @@ function mockServer(initiallyAuthenticated: boolean, failureStatus = 401) {
   let expired = false;
   let csrf = 'initial-csrf';
   let sessionReads = 0;
+  let finishPreview = () => {};
   const calls: { path: string; method: string; csrf: string | undefined }[] = [];
   const fetch = vi.fn().mockImplementation(async (path: string, options: RequestInit = {}) => {
     const method = options.method ?? 'GET';
@@ -79,6 +97,25 @@ function mockServer(initiallyAuthenticated: boolean, failureStatus = 401) {
         authenticated = false;
         result = { ok: true };
       }
+    } else if (path.startsWith('/api/actions/preview')) {
+      return new Promise((resolve) => {
+        finishPreview = () =>
+          resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({
+              id: 'old-session-preview',
+              mode: 'live',
+              request: { repository: 'example/project', kind: 'rerun', runId: 10 },
+              title: 'Stale operation',
+              impact: ['Old session evidence'],
+              destructive: false,
+              allowed: true,
+              expiresAt: new Date(Date.now() + 300_000).toISOString(),
+              confirmation: 'CONFIRM',
+            }),
+          });
+      });
     } else if (path.startsWith('/api/dashboard')) {
       if (expired) {
         status = 401;
@@ -100,12 +137,40 @@ function mockServer(initiallyAuthenticated: boolean, failureStatus = 401) {
   vi.stubGlobal('fetch', fetch);
   return {
     calls,
+    finishPreview: () => finishPreview(),
     expire: () => {
       expired = true;
     },
   };
 }
 describe('session recovery', () => {
+  it('discards a delayed preview response after another request resets the session', async () => {
+    const server = mockServer(true);
+    render(view());
+    await screen.findByRole('heading', { name: /Good diagnostics start/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare preview' }));
+    server.expire();
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh local view' }));
+    await screen.findByRole('heading', { name: 'Unlock your workspace' });
+    await act(async () => server.finishPreview());
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: 'Sign in' }) as HTMLButtonElement).disabled).toBe(
+        false,
+      ),
+    );
+    fireEvent.change(screen.getByLabelText('Operator token'), {
+      target: { value: 'local-test-operator' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await screen.findByRole('heading', { name: /Good diagnostics start/ });
+    expect(screen.queryByRole('dialog', { name: 'Stale operation' })).toBeNull();
+    expect(
+      server.calls.filter((call) => call.path.startsWith('/api/actions/preview')),
+    ).toHaveLength(1);
+    expect(
+      server.calls.filter((call) => call.path.startsWith('/api/actions/execute')),
+    ).toHaveLength(0);
+  });
   it.each([401, 403])(
     'clears cached workspace data after a %s write failure without replaying the write',
     async (status) => {

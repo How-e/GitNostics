@@ -1,4 +1,4 @@
-import { lazy, useCallback, useEffect, useState } from 'react';
+import { lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import {
@@ -97,7 +97,9 @@ export function App() {
   const [operatorToken, setOperatorToken] = useState('');
   const [loginError, setLoginError] = useState('');
   const [sessionEpoch, setSessionEpoch] = useState(0);
+  const sessionGeneration = useRef(0);
   const resetSession = useCallback(() => {
+    sessionGeneration.current += 1;
     void client.cancelQueries({ queryKey: ['dashboard'] });
     client.removeQueries({ queryKey: ['dashboard'] });
     client.removeQueries({ queryKey: ['session'] });
@@ -107,7 +109,7 @@ export function App() {
     setFindingId(undefined);
     setNotifications(false);
     setOperatorToken('');
-    setSessionEpoch((value) => value + 1);
+    setSessionEpoch(sessionGeneration.current);
   }, [client]);
   useEffect(() => onSessionError(resetSession), [resetSession]);
   const session = useQuery({
@@ -162,14 +164,18 @@ export function App() {
     success: string,
     method = 'POST',
   ): Promise<T | undefined> {
+    const generation = sessionGeneration.current;
     setPending((value) => value + 1);
     try {
       const result = await api<T>(path, { method, body, mode });
+      if (generation !== sessionGeneration.current) return undefined;
       await client.invalidateQueries({ queryKey: ['dashboard', mode] });
+      if (generation !== sessionGeneration.current) return undefined;
       setToast({ message: success });
       return result;
     } catch (error) {
-      setToast({ message: errorMessage(error), error: true });
+      if (generation === sessionGeneration.current)
+        setToast({ message: errorMessage(error), error: true });
       return undefined;
     } finally {
       setPending((value) => value - 1);
