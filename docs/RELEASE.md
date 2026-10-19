@@ -4,6 +4,8 @@ The root package version identifies the application. Use semantic versioning aft
 
 For each proposed release:
 
+Current acceptance scope is local Windows use; M0 is complete by operator confirmation. Linux/Docker, remote TLS hosting and physical mobile gates below apply when those deployment scopes are claimed. Their deferral does not constitute successful verification. Public/private GitHub App access and the documented automated/production checks have operator-reported acceptance; detailed scenarios remain tracked in [implementation status](IMPLEMENTATION_STATUS.md).
+
 - Verify the exact reviewed commit and a clean dependency install using the committed lockfile.
 - Run formatting, lint, strict TypeScript, unit/integration suites, production build/startup, browser E2E, secret checks, and a current production dependency audit. Record actual results.
 - Require hosted CI checks on the final PR head SHA and an approved review. Do not bypass or weaken branch protections. Recommended required checks are the stable `verify` and `container` job names from CI; configure them only after the workflow has run.

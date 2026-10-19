@@ -6,6 +6,8 @@ GitNostics is a self-hosted GitHub diagnostics tool for maintainers who need to 
 
 This is a working initial implementation, **not a release-ready claim**. Read [implementation status](docs/IMPLEMENTATION_STATUS.md) for the supported scope, executed checks, and outstanding acceptance work.
 
+M0 foundation acceptance is complete and operator-verified. The current deployment scope is local Windows use, with operator-confirmed GitHub App access to public and private repositories in production mode. Linux/Docker deployment acceptance is deferred.
+
 ## What you can explore
 
 - A repository command center with cached-data timestamps and explicit synchronization errors.
@@ -16,8 +18,6 @@ This is a working initial implementation, **not a release-ready claim**. Read [i
 - A findings inbox with acknowledgment, suppression, lifecycle tracking, and in-app notifications.
 - A Safe Action Center with expiring previews, explicit confirmation, permission checks, and audit events. GitHub writes are disabled by default.
 - A separate, labeled demo workspace requiring no GitHub credentials, with dark/light themes and responsive navigation.
-
-**Screenshot placeholder:** Screenshots will be added after visual acceptance. No screenshot or fixture should be interpreted as evidence of a real GitHub connection.
 
 ## Start locally
 
@@ -81,5 +81,9 @@ pnpm audit --prod --audit-level high
 ```
 
 See [development](docs/DEVELOPMENT.md), [architecture](docs/ARCHITECTURE.md), [API](docs/API.md), and the dependency-ordered [roadmap](docs/ROADMAP.md). Contributions should include evidence for diagnostic claims and preserve safe defaults. See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
+Before uploading, follow the [publication privacy checklist](docs/PUBLICATION_PRIVACY.md). Ignore rules do not remove committed files, and Git history includes author/committer identities.
+
+Read the [data handling notice](docs/PRIVACY.md), [support guidance](docs/SUPPORT.md), and [integration readiness checklist](docs/INTEGRATION_READINESS.md) before sharing or operating an installation. Contact [GitNostics@protonmail.com](mailto:GitNostics@protonmail.com) for support. External mailbox receipt and hosted publication checks remain unverified.
 
 Licensed under the [MIT License](LICENSE).
