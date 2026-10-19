@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "types": ["node", "vitest/globals"],
+    "paths": {
+      "@gitnostics/shared": ["./packages/shared/src/index.ts"],
+      "@gitnostics/github": ["./packages/github/src/index.ts"],
+      "@gitnostics/diagnostics": ["./packages/diagnostics/src/index.ts"]
+    }
+  },
+  "include": ["apps", "packages", "tests", "*.ts"]
+}

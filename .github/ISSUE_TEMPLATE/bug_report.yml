@@ -1,0 +1,32 @@
+name: Bug report
+description: Report a reproducible failure using sanitized evidence.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include credentials, private keys, raw private logs, or database exports. Report vulnerabilities through SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node version, browser, source/Docker deployment, and demo/live mode.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Include expected and observed behavior and a minimal sanitized example.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and checks
+      description: Sanitized errors and checks actually executed. Never paste secrets or private workflow logs.

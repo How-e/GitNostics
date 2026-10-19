@@ -1,0 +1,29 @@
+# Implementation roadmap
+
+Implement milestones in dependency order. A source file or a passing fixture test is implementation evidence, not proof of real GitHub or deployment acceptance. The authoritative check ledger and acceptance limits are in [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md).
+
+Current assessment: M0 is locally accepted. M1-M5 are implemented with fixture coverage and a successful public read; their App/private-resource and owner-controlled action acceptance gates remain open. M6 has passed local checks, browser workflows and production restart/backup verification; target-environment release gates remain open.
+
+| Milestone                   | Depends on | Work and completion criterion                                                                                                                                                     | Acceptance evidence still required                                                                                                                                                                     |
+| --------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| M0 — Foundation             | None       | Strict TypeScript/pnpm workspace; shared validated contracts; Fastify health endpoint; SQLite initialization/versioned migration; React shell; testing, CI, docs.                 | Local startup, persistent DB initialization, frontend render, relevant tests, lint, typecheck, production build.                                                                                       |
+| M1 — Connectivity           | M0         | Public repository lookup; server-side GitHub App installation auth; credential status; installation discovery/selection; bounded sync/caching with timestamps and partial errors. | Fixture pagination/retry/auth tests plus an authorized real App connection, repository selection, synchronization, and restart.                                                                        |
+| M2 — PR diagnostics         | M1         | Modular evidence-backed rules; supported required checks/reviews/mergeability; finding deduplication and lifecycle.                                                               | Reproducible blocker fixtures and comparison with actual authorized GitHub PR state.                                                                                                                   |
+| M3 — Actions intelligence   | M2         | Workflow/job history; bounded redacted log handling; deterministic classification, fingerprints, incidents, durations.                                                            | Fixture classification/correlation tests; real log navigation and permission-limited retrieval validation.                                                                                             |
+| M4 — Storage                | M3         | Artifact inventory, age/size/expiration, snapshots, recommendations, selective cleanup preview.                                                                                   | Known fixture totals/history plus comparison with authorized live artifact inventory. No test deletes real artifacts.                                                                                  |
+| M5 — Drift and safe actions | M4         | Saved baselines; inaccessible-setting handling; acknowledgment/suppression; narrow actions with permission gates, expiring previews, confirmation, audit trail.                   | Fake-transport denied/allowed execution tests; separate owner-controlled write acceptance outside automated or development verification.                                                               |
+| M6 — Hardening/release      | M0–M5      | Security review; coherent desktop/mobile UX; accessibility; retention/recovery/backup; reproducible packaging; operator docs.                                                     | All checks pass on final commit, hosted CI, Linux/Docker persistent-volume smoke, Windows startup, real GitHub App read acceptance, physical mobile/accessibility review, completed release checklist. |
+
+## Follow-on work
+
+The first implementation should prioritize correct supported behavior and visible limits. These capabilities must remain explicitly unavailable until implemented and verified:
+
+- Multi-user authorization, GitHub user OAuth, and multiple simultaneous installation management.
+- Webhook delivery, signature verification, replay protection, and event-driven synchronization. Current operation uses manual or configured polling.
+- Exhaustive ruleset evaluation, code-owner identity resolution, and workflow path/branch-filter attribution across all workflow forms.
+- Hosted notifications, optional AI provider adapters, and explicit private-data consent flows. Current extension interfaces must not silently transmit data.
+- Historical GitHub billing reconciliation, complete issue/review/security-event exploration, and long-duration performance guarantees.
+
+## Release gate
+
+Do not call an initial release ready while a critical route is mocked, a required check fails, or an acceptance scenario remains unverified. CI configuration is not a successful hosted CI run. A viewport test is not physical iPhone/iPad acceptance. Never perform GitHub mutations merely to close a development acceptance gate.

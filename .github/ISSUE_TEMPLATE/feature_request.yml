@@ -1,0 +1,18 @@
+name: Feature request
+description: Propose a practical diagnostic or workflow improvement.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the maintainer workflow and why current behavior falls short.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior and acceptance
+      description: Include evidence sources, permissions, alternatives, and a way to verify success without real GitHub mutations.
+    validations:
+      required: true

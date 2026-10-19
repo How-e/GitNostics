@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.25.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check formatting
+        run: pnpm format:check
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Unit and integration tests
+        run: pnpm test
+      - name: Production build
+        run: pnpm build
+      - name: Production startup and persistence
+        run: pnpm test:production
+      - name: Secret checks
+        run: node scripts/check-secrets.mjs
+      - name: Production dependency audit
+        run: pnpm audit --prod --audit-level high
+      - name: Install isolated browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Browser workflows
+        run: pnpm test:e2e
+
+  container:
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Build container
+        run: docker build --file docker/Dockerfile --tag gitnostics:ci .
+      - name: Verify health and persistent restart
+        shell: bash
+        run: |
+          set -euo pipefail
+          export AUTH_TOKEN
+          AUTH_TOKEN="$(openssl rand -hex 32)"
+          docker volume create gitnostics-ci-data >/dev/null
+          trap 'docker rm --force gitnostics-ci >/dev/null 2>&1 || true; docker volume rm gitnostics-ci-data >/dev/null 2>&1 || true' EXIT
+          docker run --detach --name gitnostics-ci --env AUTH_TOKEN --env PUBLIC_ORIGIN=http://127.0.0.1:4311 --mount source=gitnostics-ci-data,target=/app/data --publish 127.0.0.1:4311:4311 gitnostics:ci >/dev/null
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:4311/api/health >/dev/null; then break; fi
+            if [ "$attempt" -eq 30 ]; then docker logs gitnostics-ci; exit 1; fi
+            sleep 1
+          done
+          cat > "$RUNNER_TEMP/gitnostics-container-smoke.mjs" <<'NODE'
+          import assert from 'node:assert/strict';
+          const base = 'http://127.0.0.1:4311';
+          const sessionResponse = await fetch(`${base}/api/session`);
+          assert.equal(sessionResponse.status, 200);
+          let cookie = sessionResponse.headers.getSetCookie()[0].split(';')[0];
+          let { csrfToken } = await sessionResponse.json();
+          const loginResponse = await fetch(`${base}/api/login`, {
+            method: 'POST',
+            headers: { cookie, origin: base, 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+            body: JSON.stringify({ token: process.env.AUTH_TOKEN }),
+          });
+          assert.equal(loginResponse.status, 200);
+          cookie = loginResponse.headers.getSetCookie()[0].split(';')[0];
+          ({ csrfToken } = await loginResponse.json());
+          if (process.env.SEED_DEMO === '1') {
+            const reset = await fetch(`${base}/api/demo/reset`, {
+              method: 'POST',
+              headers: { cookie, origin: base, 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+              body: '{}',
+            });
+            assert.equal(reset.status, 200);
+          }
+          const dashboardResponse = await fetch(`${base}/api/dashboard?mode=demo`, { headers: { cookie } });
+          assert.equal(dashboardResponse.status, 200);
+          const dashboard = await dashboardResponse.json();
+          assert.equal(dashboard.mode, 'demo');
+          assert.equal(dashboard.repositories.length, 3);
+          assert.ok(dashboard.findings.length > 0);
+          assert.ok(dashboard.repositories.every(repository => repository.mode === 'demo' && repository.snapshot));
+          const isolated = await fetch(`${base}/api/dashboard?mode=live`, { headers: { cookie } });
+          assert.equal((await isolated.json()).repositories.length, 0);
+          console.log('Container SQLite/demo isolation check passed.');
+          NODE
+          docker exec --interactive --env AUTH_TOKEN --env SEED_DEMO=1 gitnostics-ci node --input-type=module < "$RUNNER_TEMP/gitnostics-container-smoke.mjs"
+          docker restart gitnostics-ci >/dev/null
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:4311/api/health >/dev/null; then break; fi
+            if [ "$attempt" -eq 30 ]; then docker logs gitnostics-ci; exit 1; fi
+            sleep 1
+          done
+          docker exec --interactive --env AUTH_TOKEN gitnostics-ci node --input-type=module < "$RUNNER_TEMP/gitnostics-container-smoke.mjs"

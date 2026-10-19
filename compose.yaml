@@ -1,0 +1,29 @@
+services:
+  gitnostics:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      - '127.0.0.1:4311:4311'
+    environment:
+      HOST: 0.0.0.0
+      PORT: 4311
+      DATA_DIR: /app/data
+      AUTH_TOKEN: ${AUTH_TOKEN:?Set AUTH_TOKEN to a random value of at least 32 characters}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://127.0.0.1:4311}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+      WRITE_ENABLED: ${WRITE_ENABLED:-false}
+      GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      GITHUB_INSTALLATION_ID: ${GITHUB_INSTALLATION_ID:-}
+    volumes:
+      - gitnostics-data:/app/data
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 120s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  gitnostics-data:
