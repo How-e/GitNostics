@@ -576,10 +576,14 @@ export async function createApp(
   if (existsSync(resolve(staticRoot, 'index.html'))) {
     await app.register(fastifyStatic, { root: staticRoot, index: ['index.html'] });
     app.setNotFoundHandler(async (request, reply) => {
+      const path = request.url.split('?')[0]!;
+      const repositoryPage =
+        path.startsWith('/repositories/') &&
+        repoNameSchema.safeParse(path.slice('/repositories/'.length).replace(/\/$/, '')).success;
       if (
         request.method === 'GET' &&
-        !request.url.startsWith('/api/') &&
-        !request.url.split('?')[0].includes('.')
+        !path.startsWith('/api/') &&
+        (!path.includes('.') || repositoryPage)
       )
         return reply.type('text/html').sendFile('index.html');
       return reply.code(404).send({ error: 'Route not found.' });
