@@ -31,22 +31,24 @@ The operator token controls access to GitNostics; it is separate from GitHub cre
 
 ## Commands and checks
 
-| Command                                 | Purpose                                                                                                         |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `pnpm dev`                              | Start API and Vite together.                                                                                    |
-| `pnpm dev:server` / `pnpm dev:web`      | Start one development process.                                                                                  |
-| `pnpm typecheck`                        | Strict project TypeScript validation.                                                                           |
-| `pnpm lint`                             | ESLint.                                                                                                         |
-| `pnpm format:check`                     | Verify formatting without editing.                                                                              |
-| `pnpm format`                           | Format tracked source/configuration.                                                                            |
-| `pnpm test`                             | Unit and API/database/GitHub fixture integration suites.                                                        |
-| `pnpm build` / `pnpm start`             | Compile and start the production server/frontend.                                                               |
-| `pnpm exec playwright install chromium` | Install browser required for local E2E. Linux CI uses `--with-deps`.                                            |
-| `pnpm test:e2e`                         | Isolated browser workflow suite.                                                                                |
-| `pnpm test:production`                  | Built-server static routes, restart persistence, backups and mode isolation with no GitHub requests.            |
-| `pnpm check`                            | Formatting, lint, typecheck, unit/integration, and build. E2E/security checks are separate.                     |
-| `node scripts/check-secrets.mjs`        | Heuristic credential checks over non-ignored repository files; prints paths/rules, never matched secret values. |
-| `pnpm audit --prod --audit-level high`  | Check production dependency advisories; requires registry network access.                                       |
+| Command                                 | Purpose                                                                                                             |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `pnpm dev`                              | Start API and Vite together.                                                                                        |
+| `pnpm dev:server` / `pnpm dev:web`      | Start one development process.                                                                                      |
+| `pnpm typecheck`                        | Strict project TypeScript validation.                                                                               |
+| `pnpm lint`                             | ESLint.                                                                                                             |
+| `pnpm format:check`                     | Verify formatting without editing.                                                                                  |
+| `pnpm format`                           | Format tracked source/configuration.                                                                                |
+| `pnpm test`                             | Unit and API/database/GitHub fixture integration suites.                                                            |
+| `pnpm build` / `pnpm start`             | Compile and start the production server/frontend.                                                                   |
+| `pnpm exec playwright install chromium` | Install browser required for local E2E. Linux CI uses `--with-deps`.                                                |
+| `pnpm test:e2e`                         | Isolated browser workflow suite.                                                                                    |
+| `pnpm test:production`                  | Built-server static routes, restart persistence, backups and mode isolation with no GitHub requests.                |
+| `pnpm check`                            | Formatting, lint, typecheck, unit/integration, and build. E2E/security checks are separate.                         |
+| `node scripts/check-secrets.mjs`        | Heuristic privacy checks over working files, index and reachable history; prints paths/rules, never matched values. |
+| `pnpm audit --prod --audit-level high`  | Check production dependency advisories; requires registry network access.                                           |
+
+Run `pnpm test:privacy` for the privacy guard regression tests and a scan of working files, staged content, and reachable Git history. Enable local pre-commit/pre-push guards with `git config --local core.hooksPath .githooks`. Follow the [publication privacy checklist](PUBLICATION_PRIVACY.md) before uploading. Ignore rules do not sanitize previously committed data or commit identities.
 
 No test may use real GitHub write credentials. Network integration uses injected fake transports; browser tests use isolated fixture mode/data. Add deterministic tests for both denied and allowed action paths without invoking GitHub. Do not interpret a demo confirmation dialog as a real mutation.
 

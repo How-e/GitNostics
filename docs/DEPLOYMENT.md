@@ -1,6 +1,6 @@
 # Deployment and data operations
 
-Supported targets are Windows 11, Linux, and a Linux Docker image. Actual executed coverage is recorded in [implementation status](IMPLEMENTATION_STATUS.md); configuration is not deployment acceptance. Use Node.js 24.13+ in a supported LTS line and the pinned pnpm version for source deployment.
+The current deployment scope is local Windows use. Linux and Docker configurations are supplied but their deployment acceptance is deferred; remote hosting is also outside the current scope. Actual executed coverage is recorded in [implementation status](IMPLEMENTATION_STATUS.md); configuration is not deployment acceptance. Use Node.js 24.13+ in a supported LTS line and the pinned pnpm version for source deployment.
 
 ## Source deployment
 
