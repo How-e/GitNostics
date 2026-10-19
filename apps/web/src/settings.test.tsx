@@ -18,12 +18,16 @@ const dashboard = (connected = true): Dashboard => ({
   workflowAnalytics: [],
 });
 
-function view(data: Dashboard, mode: DataMode = 'live') {
+function view(
+  data: Dashboard,
+  mode: DataMode = 'live',
+  mutate: AppContextValue['mutate'] = async () => undefined,
+) {
   const context: AppContextValue = {
     data,
     mode,
     busy: false,
-    mutate: async () => undefined,
+    mutate,
     preview: async () => {},
     inspect: () => {},
     refresh: () => {},
@@ -38,6 +42,63 @@ function view(data: Dashboard, mode: DataMode = 'live') {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+});
+
+describe('settings day counts', () => {
+  it.each([
+    ['Local history retention', '6', 'retention-error'],
+    ['Local history retention', '366', 'retention-error'],
+    ['Local history retention', '', 'retention-error'],
+    ['Local history retention', '7.5', 'retention-error'],
+    ['Artifact review age', '0', 'artifact-age-error'],
+    ['Artifact review age', '366', 'artifact-age-error'],
+    ['Artifact review age', '', 'artifact-age-error'],
+    ['Artifact review age', '1.5', 'artifact-age-error'],
+  ])('blocks both save controls for %s = %s', (name, value, errorId) => {
+    const mutate = vi.fn().mockResolvedValue(undefined);
+    render(view(dashboard(), 'live', mutate));
+    const input = screen.getByRole('spinbutton', { name });
+    fireEvent.change(input, { target: { value } });
+
+    expect((input as HTMLInputElement).value).toBe(value);
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    expect(input.getAttribute('aria-describedby')).toContain(errorId);
+    expect(screen.getByRole('alert').id).toBe(errorId);
+    for (const button of screen.getAllByRole('button', { name: 'Save preferences' })) {
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.click(button);
+    }
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['Local history retention', 'retentionDays', '7'],
+    ['Local history retention', 'retentionDays', '365'],
+    ['Artifact review age', 'artifactAgeDays', '1'],
+    ['Artifact review age', 'artifactAgeDays', '365'],
+  ])('saves the valid %s boundary %s = %s from either control', (name, key, value) => {
+    const mutate = vi.fn().mockResolvedValue(undefined);
+    render(view(dashboard(), 'live', mutate));
+    const input = screen.getByRole('spinbutton', { name });
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.change(input, { target: { value } });
+
+    expect(input.getAttribute('aria-invalid')).toBe('false');
+    expect(screen.queryByRole('alert')).toBeNull();
+    for (const button of screen.getAllByRole('button', { name: 'Save preferences' })) {
+      expect((button as HTMLButtonElement).disabled).toBe(false);
+      fireEvent.click(button);
+    }
+    expect(mutate).toHaveBeenCalledTimes(2);
+    expect(mutate).toHaveBeenNthCalledWith(
+      1,
+      '/api/settings',
+      { ...defaultSettings, [key]: Number(value) },
+      'Workspace preferences saved',
+      'PUT',
+    );
+    expect(mutate.mock.calls[1]).toEqual(mutate.mock.calls[0]);
+  });
 });
 
 describe('connection discovery', () => {

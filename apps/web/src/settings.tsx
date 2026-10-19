@@ -24,6 +24,8 @@ interface DiscoveredRepository {
 export function SettingsPage({ exploreDemo }: { exploreDemo: () => void }) {
   const { data, mode, busy, mutate } = useApp();
   const [settings, setSettings] = useState<AppSettings>(data.settings);
+  const [retentionDays, setRetentionDays] = useState(String(data.settings.retentionDays));
+  const [artifactAgeDays, setArtifactAgeDays] = useState(String(data.settings.artifactAgeDays));
   const [discovering, setDiscovering] = useState(false);
   const [discovered, setDiscovered] = useState<DiscoveredRepository[]>();
   const [discoveryComplete, setDiscoveryComplete] = useState(true);
@@ -34,6 +36,8 @@ export function SettingsPage({ exploreDemo }: { exploreDemo: () => void }) {
   const [disconnect, setDisconnect] = useState(false);
   useEffect(() => {
     setSettings(data.settings);
+    setRetentionDays(String(data.settings.retentionDays));
+    setArtifactAgeDays(String(data.settings.artifactAgeDays));
   }, [data.settings]);
   useEffect(() => {
     const previous = discoveryContext.current;
@@ -54,7 +58,31 @@ export function SettingsPage({ exploreDemo }: { exploreDemo: () => void }) {
   useEffect(() => () => discoveryRequest.current?.abort(), []);
   const change = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) =>
     setSettings((previous) => ({ ...previous, [key]: value }));
-  const dirty = JSON.stringify(settings) !== JSON.stringify(data.settings);
+  const dirty =
+    JSON.stringify(settings) !== JSON.stringify(data.settings) ||
+    retentionDays !== String(data.settings.retentionDays) ||
+    artifactAgeDays !== String(data.settings.artifactAgeDays);
+  const validDays = (value: string, minimum: number) =>
+    value.trim() !== '' &&
+    Number.isInteger(Number(value)) &&
+    Number(value) >= minimum &&
+    Number(value) <= 365;
+  const retentionValid = validDays(retentionDays, 7);
+  const artifactAgeValid = validDays(artifactAgeDays, 1);
+  const canSave = dirty && !busy && retentionValid && artifactAgeValid;
+  const save = () => {
+    if (!canSave) return;
+    void mutate(
+      '/api/settings',
+      {
+        ...settings,
+        retentionDays: Number(retentionDays),
+        artifactAgeDays: Number(artifactAgeDays),
+      },
+      'Workspace preferences saved',
+      'PUT',
+    );
+  };
   const discover = async () => {
     discoveryRequest.current?.abort();
     const controller = new AbortController();
@@ -80,13 +108,7 @@ export function SettingsPage({ exploreDemo }: { exploreDemo: () => void }) {
         title="Workspace settings"
         description="Connections, monitoring preferences, and the rules that shape your diagnostics."
         action={
-          <button
-            className="button primary"
-            disabled={!dirty || busy}
-            onClick={() =>
-              void mutate('/api/settings', settings, 'Workspace preferences saved', 'PUT')
-            }
-          >
+          <button className="button primary" disabled={!canSave} onClick={save}>
             <Save size={15} />
             Save preferences
           </button>
@@ -323,12 +345,22 @@ export function SettingsPage({ exploreDemo }: { exploreDemo: () => void }) {
                   type="number"
                   min={7}
                   max={365}
-                  value={settings.retentionDays}
-                  onChange={(event) => change('retentionDays', Number(event.target.value))}
+                  step={1}
+                  aria-invalid={!retentionValid}
+                  aria-describedby={
+                    retentionValid ? 'retention-help' : 'retention-help retention-error'
+                  }
+                  value={retentionDays}
+                  onChange={(event) => setRetentionDays(event.target.value)}
                 />
-                <span className="input-help">
+                <span className="input-help" id="retention-help">
                   Keep 7–365 days of local diagnostic and activity history.
                 </span>
+                {!retentionValid && (
+                  <span className="error-message" id="retention-error" role="alert">
+                    Enter a whole number from 7 to 365 days.
+                  </span>
+                )}
               </label>
               <label>
                 Artifact review age (days)
@@ -337,12 +369,22 @@ export function SettingsPage({ exploreDemo }: { exploreDemo: () => void }) {
                   type="number"
                   min={1}
                   max={365}
-                  value={settings.artifactAgeDays}
-                  onChange={(event) => change('artifactAgeDays', Number(event.target.value))}
+                  step={1}
+                  aria-invalid={!artifactAgeValid}
+                  aria-describedby={
+                    artifactAgeValid ? 'artifact-age-help' : 'artifact-age-help artifact-age-error'
+                  }
+                  value={artifactAgeDays}
+                  onChange={(event) => setArtifactAgeDays(event.target.value)}
                 />
-                <span className="input-help">
+                <span className="input-help" id="artifact-age-help">
                   Artifacts older than this become cleanup candidates. Nothing is auto-deleted.
                 </span>
+                {!artifactAgeValid && (
+                  <span className="error-message" id="artifact-age-error" role="alert">
+                    Enter a whole number from 1 to 365 days.
+                  </span>
+                )}
               </label>
             </div>
           </Panel>
@@ -435,20 +477,7 @@ export function SettingsPage({ exploreDemo }: { exploreDemo: () => void }) {
             <span>
               {dirty ? 'You have unsaved preferences.' : 'All workspace preferences are saved.'}
             </span>
-            <button
-              className="button primary"
-              disabled={
-                !dirty ||
-                busy ||
-                settings.retentionDays < 7 ||
-                settings.retentionDays > 365 ||
-                settings.artifactAgeDays < 1 ||
-                settings.artifactAgeDays > 365
-              }
-              onClick={() =>
-                void mutate('/api/settings', settings, 'Workspace preferences saved', 'PUT')
-              }
-            >
+            <button className="button primary" disabled={!canSave} onClick={save}>
               <Save size={15} />
               Save preferences
             </button>
