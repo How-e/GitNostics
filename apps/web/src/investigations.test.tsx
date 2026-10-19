@@ -104,6 +104,24 @@ function view(
 afterEach(cleanup);
 
 describe('pull request evidence visibility', () => {
+  it.each(['head', 'merge', undefined] as const)(
+    'does not attribute empty check evidence to the head when source is %s',
+    (checksSource) => {
+      render(
+        view({
+          ...completePR,
+          checksSource,
+          ...(checksSource ? { checksSha: `${checksSource}-revision` } : {}),
+        }),
+      );
+      fireEvent.click(screen.getByRole('button', { name: completePR.title }));
+      expect(
+        screen.getByText('No check results were collected for this pull request.'),
+      ).toBeTruthy();
+      expect(screen.queryByText(/for this head revision/)).toBeNull();
+    },
+  );
+
   it.each([
     [
       'checks',

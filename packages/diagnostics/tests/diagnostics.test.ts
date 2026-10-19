@@ -100,6 +100,61 @@ function artifact(id: number, overrides: Partial<Artifact> = {}): Artifact {
 }
 
 describe('PR evidence rules', () => {
+  it.each(['head', 'merge'] as const)(
+    'identifies the actual %s commit in required-check evidence and explanations',
+    (checksSource) => {
+      const checksSha = `${checksSource}-revision`;
+      const location = checksSource === 'merge' ? 'test merge commit' : 'pull request head commit';
+      const findings = diagnose(
+        snapshot({
+          pullRequests: [
+            pr({
+              checksSha,
+              checksSource,
+              requiredChecks: ['failed', 'pending', 'missing'],
+              checksComplete: true,
+              checks: [
+                { name: 'failed', status: 'failure' },
+                { name: 'pending', status: 'pending' },
+              ],
+            }),
+          ],
+        }),
+      );
+      expect(findings).toHaveLength(3);
+      for (const finding of findings) {
+        expect(finding.explanation).toContain(location);
+        expect(finding.evidence).toContainEqual({ label: 'Check commit', value: checksSha });
+        expect(finding.evidence).toContainEqual({
+          label: 'Check source',
+          value: checksSource === 'merge' ? 'Test merge commit' : 'Pull request head commit',
+        });
+        if (checksSource === 'merge') expect(finding.explanation).not.toContain('head commit');
+      }
+    },
+  );
+
+  it.each([true, false])(
+    'keeps legacy snapshots compatible without inventing a check source (%s complete)',
+    (checksComplete) => {
+      const findings = diagnose(
+        snapshot({
+          pullRequests: [pr({ requiredChecks: ['missing'], checksComplete })],
+        }),
+      );
+      expect(findings[0]).toMatchObject({
+        ruleId: 'pr.required-check-missing',
+        confidence: checksComplete ? 'probable' : 'insufficient_evidence',
+      });
+      expect(findings[0]!.explanation).not.toContain('head commit');
+      expect(findings[0]!.evidence).toContainEqual({
+        label: 'Check source',
+        value: 'Not recorded in this snapshot',
+      });
+      expect(findings[0]!.evidence.some((item) => item.label === 'Check commit')).toBe(false);
+    },
+  );
+
   it.each([
     ['failure', 'pr.required-check-failed'],
     ['pending', 'pr.required-check-pending'],

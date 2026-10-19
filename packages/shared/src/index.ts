@@ -58,6 +58,8 @@ export interface PullRequest {
   mergeable: boolean | null;
   mergeableState: string;
   checks: Check[];
+  checksSha?: string;
+  checksSource?: 'head' | 'merge';
   approvals: number;
   changesRequested: boolean;
   updatedAt: string;

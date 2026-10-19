@@ -30,9 +30,10 @@ const pr = {
   user: { login: 'maintainer' },
   html_url: 'https://github.com/octo/project/pull/7',
   head: { sha: 'head' },
+  merge_commit_sha: 'head',
   base: { ref: 'main', sha: 'base' },
   draft: false,
-  mergeable: null,
+  mergeable: true,
   mergeable_state: 'unknown',
   updated_at: now,
 };
@@ -394,7 +395,7 @@ describe('GitHub authentication boundaries', () => {
 });
 
 describe('GitHub REST collection and mapping', () => {
-  it('maps real response shapes while preserving unknown mergeability, latest reviews and check app identity', async () => {
+  it('maps real response shapes while preserving latest reviews and check app identity', async () => {
     const fetch = transport(api());
     const snapshot = await new GitHubClient({ fetch }).snapshot('octo/project');
     expect(snapshot).toMatchObject({
@@ -407,7 +408,7 @@ describe('GitHub REST collection and mapping', () => {
     });
     expect(snapshot.pullRequests[0]).toMatchObject({
       number: 7,
-      mergeable: null,
+      mergeable: true,
       mergeableState: 'unknown',
       protectionKnown: true,
       checksComplete: true,
