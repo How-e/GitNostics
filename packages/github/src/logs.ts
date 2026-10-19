@@ -16,6 +16,7 @@ export function redactLog(input: string, secrets: readonly string[] = []): strin
       /\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+|AKIA[A-Z0-9]{16})\b/g,
       '[REDACTED TOKEN]',
     )
+    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[REDACTED TOKEN]')
     .replace(/\b(?:Bearer|Basic)\s+[A-Za-z0-9+/_=.:-]+/gi, '[REDACTED AUTHORIZATION]')
     .replace(
       /(\bauthorization["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\\r\n])*"?|'(?:\\.|[^'\\\r\n])*'?|[^\r\n]*)/gi,
@@ -76,4 +77,12 @@ export async function readBoundedText(
     await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
+}
+
+/** Redact the entire bounded download before selecting the failure-prone tail. */
+export function logExcerpt(input: string, secrets: readonly string[] = []): string {
+  const bytes = Buffer.from(redactLog(input, secrets));
+  let start = Math.max(0, bytes.length - MAX_LOG_EXCERPT);
+  while (start < bytes.length && (bytes[start]! & 0xc0) === 0x80) start += 1;
+  return bytes.subarray(start).toString('utf8');
 }

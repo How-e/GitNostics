@@ -13,14 +13,9 @@ import type {
   WorkflowJob,
   WorkflowRun,
 } from '@gitnostics/shared';
-import {
-  isAllowedLogUrl,
-  MAX_LOG_BYTES,
-  MAX_LOG_EXCERPT,
-  readBoundedText,
-  redactLog,
-} from './logs.js';
+import { isAllowedLogUrl, MAX_LOG_BYTES, logExcerpt, readBoundedText, redactLog } from './logs.js';
 export {
+  logExcerpt,
   isAllowedLogUrl,
   MAX_LOG_BYTES,
   MAX_LOG_EXCERPT,
@@ -746,7 +741,6 @@ export class GitHubClient {
       warnings.push('Pull request details limited to the 25 most recently updated open requests');
     if ((runs?.items.length ?? 0) > 30)
       warnings.push('Workflow history limited to 30 recent runs; rates describe this sample');
-    let logBudget = 3;
     let jobsComplete = true;
     const pullRequests = (
       await Promise.all(
@@ -794,25 +788,38 @@ export class GitHubClient {
               ...(item.started_at ? { startedAt: iso(item.started_at) } : {}),
               ...(item.completed_at ? { completedAt: iso(item.completed_at) } : {}),
             };
-            if (['failure', 'timed_out', 'startup_failure'].includes(job.conclusion ?? '')) {
-              if (logBudget > 0) {
-                logBudget--;
-                const excerpt = await this.optional(
-                  `Logs for job ${job.id}`,
-                  () => this.jobLog(parameters, job.id, signal),
-                  warnings,
-                  signal,
-                );
-                if (excerpt) job.logExcerpt = excerpt;
-                else jobsComplete = false;
-              } else jobsComplete = false;
-            }
             return job;
           }),
         );
         return result;
       }),
     );
+    // Reserve the bounded budget in API run/job order, independent of response latency.
+    const failedJobs = workflowRuns.flatMap((run) =>
+      run.jobs.filter((job) =>
+        ['failure', 'timed_out', 'startup_failure', 'action_required'].includes(
+          job.conclusion ?? '',
+        ),
+      ),
+    );
+    await Promise.all(
+      failedJobs.slice(0, 3).map(async (job) => {
+        const excerpt = await this.optional(
+          `Logs for job ${job.id}`,
+          () => this.jobLog(parameters, job.id, signal),
+          warnings,
+          signal,
+        );
+        if (excerpt) job.logExcerpt = excerpt;
+        else jobsComplete = false;
+      }),
+    );
+    if (failedJobs.length > 3) {
+      jobsComplete = false;
+      warnings.push(
+        'Failed-job logs limited to 3 excerpts per refresh; additional failed jobs have no log evidence',
+      );
+    }
     if ((runs?.items.length ?? 0) > 10)
       warnings.push(
         'Job details collected for the 10 most recent runs; at most 3 failed-job log excerpts per refresh',
@@ -1158,7 +1165,7 @@ export class GitHubClient {
     if (response.status !== 302) {
       if (typeof response.data !== 'string')
         throw new GitHubError('GitHub log response was not plain text');
-      return redactLog(response.data, this.secrets).slice(0, MAX_LOG_EXCERPT);
+      return logExcerpt(response.data, this.secrets);
     }
     const location = String(response.headers.location ?? '');
     if (!isAllowedLogUrl(location))
@@ -1178,7 +1185,7 @@ export class GitHubClient {
         await download.body?.cancel();
         throw new GitHubError('GitHub log download unavailable');
       }
-      return redactLog(await readBoundedText(download), this.secrets).slice(0, MAX_LOG_EXCERPT);
+      return logExcerpt(await readBoundedText(download), this.secrets);
     }, combined);
   }
 

@@ -422,6 +422,16 @@ describe('accessible configuration drift', () => {
 });
 
 describe('bounded log classification and correlation', () => {
+  it('removes signed URL credentials from excerpts and unknown failure signatures', () => {
+    const source =
+      'failure https://example.test/log?sig=fixture-sig&X-Amz-Credential=fixture-credential&signature=fixture-signature';
+    const result = classifyFailure(source);
+    for (const secret of ['fixture-sig', 'fixture-credential', 'fixture-signature']) {
+      expect(result.excerpt).not.toContain(secret);
+      expect(result.signature).not.toContain(secret);
+    }
+  });
+
   it('preserves useful categories through GitHub redaction and keeps normalized values secret-free', () => {
     const secret = 'synthetic-sensitive-value';
     const raw = `npm ERR! ERESOLVE unable to resolve dependency tree\nAuthorization: Bearer ${secret}\nhttps://example.test/log?token=${secret}`;

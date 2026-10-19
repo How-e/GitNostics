@@ -37,6 +37,10 @@ export function redactLog(input: string): string {
       /(\b(?:[A-Za-z][A-Za-z0-9_]*_)?(?:token|api[_-]?key|secret|password|passwd|client[_-]?secret|access[_-]?token|authorization|private[_-]?key|aws[_-]?secret[_-]?access[_-]?key)\b["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\\r\n])*"?|'(?:\\.|[^'\\\r\n])*'?|[^\s,;&]+)/gi,
       '$1[REDACTED]',
     )
+    .replace(
+      /([?&](?:sig|signature|access_token|token|key|credential|x-amz-[a-z-]+)=)[^&\s]+/gi,
+      '$1[REDACTED]',
+    )
     .split('\n')
     .map((line) => line.slice(0, LOG_LIMITS.lineCharacters))
     .join('\n');

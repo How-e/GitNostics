@@ -3,7 +3,9 @@ import { generateKeyPairSync } from 'node:crypto';
 import {
   GitHubClient,
   isAllowedLogUrl,
+  logExcerpt,
   MAX_LOG_BYTES,
+  MAX_LOG_EXCERPT,
   readBoundedText,
   redactLog,
 } from './index.js';
@@ -824,6 +826,70 @@ describe('request reliability', () => {
 });
 
 describe('log security and resource limits', () => {
+  it('persists a UTF-8 byte-bounded tail with final failure evidence after redacting the entire log', async () => {
+    const source = '\u00e9'.repeat(MAX_LOG_EXCERPT) + '\nerror TS2345: terminal compiler failure';
+    const fetch = transport(
+      api((url) =>
+        url.pathname.endsWith('/jobs/9/logs')
+          ? new Response(source, { headers: { 'content-type': 'text/plain' } })
+          : passthrough(),
+      ),
+    );
+    const snapshot = await new GitHubClient({ fetch }).snapshot('octo/project');
+    const excerpt = snapshot.runs[0]!.jobs[0]!.logExcerpt!;
+    expect(Buffer.byteLength(excerpt)).toBeLessThanOrEqual(MAX_LOG_EXCERPT);
+    expect(excerpt).toContain('terminal compiler failure');
+    expect(excerpt).not.toContain('\ufffd');
+    expect(
+      logExcerpt('-----BEGIN PRIVATE KEY-----\n' + 's'.repeat(MAX_LOG_EXCERPT * 2)),
+    ).not.toContain('ssss');
+  });
+
+  it('allocates the failed-job budget in run order despite out-of-order job responses and exposes omitted logs', async () => {
+    const fetch = transport(
+      api(async (url) => {
+        if (url.pathname.endsWith('/actions/runs'))
+          return json({ workflow_runs: [12, 13, 14, 15].map((id) => ({ ...run, id })) });
+        const jobs = /\/runs\/(\d+)\/jobs$/.exec(url.pathname);
+        if (jobs) {
+          const id = Number(jobs[1]);
+          if (id === 12) await new Promise((resolve) => setTimeout(resolve, 30));
+          return json({
+            jobs: [
+              {
+                id,
+                name: 'compile',
+                conclusion: id === 12 ? 'action_required' : 'failure',
+                html_url: '',
+              },
+            ],
+          });
+        }
+        if (/\/jobs\/\d+\/logs$/.test(url.pathname))
+          return new Response('error TS2345: failed', {
+            headers: { 'content-type': 'text/plain' },
+          });
+        return passthrough();
+      }),
+    );
+    const snapshot = await new GitHubClient({ fetch }).snapshot('octo/project');
+    const paths = fetch.mock.calls
+      .map(([input]) => new URL(String(input)).pathname)
+      .filter((path) => path.endsWith('/logs'));
+    expect(paths).toEqual([12, 13, 14].map((id) => `/repos/octo/project/actions/jobs/${id}/logs`));
+    expect(snapshot.runs[0]!.jobs[0]!.logExcerpt).toContain('TS2345');
+    expect(snapshot.runs[3]!.jobs[0]!.logExcerpt).toBeUndefined();
+    expect(snapshot.collectionState?.runs).toBe(false);
+    expect(snapshot.warnings).toContain(
+      'Failed-job logs limited to 3 excerpts per refresh; additional failed jobs have no log evidence',
+    );
+  });
+
+  it('redacts standalone JWT credentials before persistence', () => {
+    const credential = ['eyJmaXh0dXJl', 'c3ludGhldGlj', 'c2lnbmF0dXJl'].join('.');
+    expect(redactLog(`output: ${credential}`)).not.toContain(credential);
+  });
+
   it('restricts signed log destinations and never follows hostile redirects', async () => {
     for (const url of [
       'http://productionresultssa7.blob.core.windows.net/log',
