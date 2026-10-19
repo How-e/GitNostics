@@ -9,6 +9,20 @@ export function redactLog(input: string, secrets: readonly string[] = []): strin
   }
   return text
     .replace(
+      /(["'])((?:set-)?cookie[ \t]*:[ \t]*)(?:\\.|(?!\1)[^\\\r\n])*(?:\1|(?=\r?\n|$))|(\b(?:set-)?cookie\b["'][ \t]*[:=][ \t]*)(?:(["'])(?:\\.|(?!\4)[^\\\r\n])*(?:\4|(?=\r?\n|$))|[^\r\n]*)|(\b(?:set-)?cookie\b[ \t]*[:=][ \t]*)[^\r\n]*/gi,
+      (
+        _match,
+        headerQuote: string | undefined,
+        header: string | undefined,
+        prefix: string | undefined,
+        valueQuote: string | undefined,
+        rawPrefix: string | undefined,
+      ) =>
+        headerQuote
+          ? `${headerQuote}${header}[REDACTED COOKIE]${headerQuote}`
+          : `${prefix ?? rawPrefix}${valueQuote ?? ''}[REDACTED COOKIE]${valueQuote ?? ''}`,
+    )
+    .replace(
       /-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g,
       '[REDACTED PRIVATE KEY]',
     )
