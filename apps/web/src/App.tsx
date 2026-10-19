@@ -1,4 +1,4 @@
-import { lazy, useEffect, useState } from 'react';
+import { lazy, useCallback, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import {
@@ -28,7 +28,15 @@ import {
   X,
 } from 'lucide-react';
 import type { ActionPreview, ActionRequest, Dashboard, DataMode } from '@gitnostics/shared';
-import { api, errorMessage, readMode, rememberMode, setCsrfToken, type Session } from './api';
+import {
+  api,
+  errorMessage,
+  onSessionError,
+  readMode,
+  rememberMode,
+  setCsrfToken,
+  type Session,
+} from './api';
 import { AppContext } from './context';
 import { Badge, Empty, FindingDialog, IconButton, Modal, Notifications } from './components';
 import { dateLabel, latestSync, relative } from './format';
@@ -88,8 +96,22 @@ export function App() {
   const [confirmation, setConfirmation] = useState('');
   const [operatorToken, setOperatorToken] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [sessionEpoch, setSessionEpoch] = useState(0);
+  const resetSession = useCallback(() => {
+    void client.cancelQueries({ queryKey: ['dashboard'] });
+    client.removeQueries({ queryKey: ['dashboard'] });
+    client.removeQueries({ queryKey: ['session'] });
+    setCsrfToken('');
+    setActionPreview(undefined);
+    setConfirmation('');
+    setFindingId(undefined);
+    setNotifications(false);
+    setOperatorToken('');
+    setSessionEpoch((value) => value + 1);
+  }, [client]);
+  useEffect(() => onSessionError(resetSession), [resetSession]);
   const session = useQuery({
-    queryKey: ['session'],
+    queryKey: ['session', sessionEpoch],
     queryFn: async ({ signal }) => {
       const value = await api<Session>('/api/session', { signal });
       setCsrfToken(value.csrfToken);
@@ -99,7 +121,7 @@ export function App() {
     retry: false,
   });
   const dashboard = useQuery({
-    queryKey: ['dashboard', mode],
+    queryKey: ['dashboard', mode, sessionEpoch],
     enabled: Boolean(session.data && (!session.data.requiresLogin || session.data.authenticated)),
     queryFn: ({ signal }) => api<Dashboard>('/api/dashboard', { mode, signal }),
     refetchInterval: (query) =>
@@ -190,6 +212,8 @@ export function App() {
     setPending((value) => value + 1);
     setLoginError('');
     try {
+      const fresh = await api<Session>('/api/session');
+      setCsrfToken(fresh.csrfToken);
       const result = await api<{ csrfToken: string }>('/api/login', {
         method: 'POST',
         body: { token: operatorToken },
@@ -206,12 +230,10 @@ export function App() {
   async function logout() {
     setPending((value) => value + 1);
     try {
+      const fresh = await api<Session>('/api/session');
+      setCsrfToken(fresh.csrfToken);
       await api('/api/logout', { method: 'POST', body: {} });
-      setActionPreview(undefined);
-      setFindingId(undefined);
-      setNotifications(false);
-      client.removeQueries({ queryKey: ['dashboard'] });
-      await client.invalidateQueries({ queryKey: ['session'] });
+      resetSession();
     } catch (error) {
       setToast({ message: errorMessage(error), error: true });
     } finally {
