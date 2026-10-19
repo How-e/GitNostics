@@ -68,6 +68,29 @@ describe('workflow pulse UTC calendar', () => {
     expect(trend.map((day) => day.failure)).toEqual(Array<number>(14).fill(0));
   });
 
+  it('normalizes positive and negative timestamp offsets to their UTC run date', () => {
+    const trend = workflowTrend(
+      [
+        run('2026-10-20T00:30:00+02:00', 'failure'),
+        run('2026-10-19T23:30:00-04:00'),
+        run('2026-10-07T00:30:00+02:00'),
+        run('2026-10-06T23:30:00-04:00', 'failure'),
+      ],
+      new Date('2026-10-20T12:00:00Z'),
+    );
+    expect(trend.at(0)).toEqual({ day: label('2026-10-07'), success: 0, failure: 1 });
+    expect(trend.at(-2)).toEqual({ day: label('2026-10-19'), success: 0, failure: 1 });
+    expect(trend.at(-1)).toEqual({ day: label('2026-10-20'), success: 1, failure: 0 });
+  });
+
+  it('ignores invalid timestamps without throwing or counting them', () => {
+    const trend = workflowTrend(
+      [run('invalid'), run(''), run('2026-99-99T00:00:00Z', 'failure')],
+      new Date('2026-10-20T12:00:00Z'),
+    );
+    expect(trend.every((day) => day.success === 0 && day.failure === 0)).toBe(true);
+  });
+
   it('excludes runs outside the UTC window and counts supported failed conclusions', () => {
     const trend = workflowTrend(
       [
