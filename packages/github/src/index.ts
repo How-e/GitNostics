@@ -742,6 +742,9 @@ export class GitHubClient {
     if ((runs?.items.length ?? 0) > 30)
       warnings.push('Workflow history limited to 30 recent runs; rates describe this sample');
     let jobsComplete = true;
+    const protections = new Map<string, Promise<Protection>>([
+      [defaultBranch, Promise.resolve(protection)],
+    ]);
     const pullRequests = (
       await Promise.all(
         (prs?.items ?? [])
@@ -749,7 +752,7 @@ export class GitHubClient {
           .map((pr) =>
             this.optional(
               `Pull request #${number(pr.number)}`,
-              () => this.pullRequest(parameters, pr, defaultBranch, protection, warnings, signal),
+              () => this.pullRequest(parameters, pr, defaultBranch, protections, warnings, signal),
               warnings,
               signal,
             ),
@@ -985,7 +988,7 @@ export class GitHubClient {
     parameters: Parameters,
     listed: Json,
     defaultBranch: string,
-    defaultProtection: Protection,
+    protections: Map<string, Promise<Protection>>,
     warnings: string[],
     signal?: AbortSignal,
   ): Promise<PullRequest> {
@@ -1000,6 +1003,11 @@ export class GitHubClient {
     );
     const headSha = string(object(pr.head).sha);
     const baseBranch = string(object(pr.base).ref, defaultBranch);
+    let baseProtection = protections.get(baseBranch);
+    if (!baseProtection) {
+      baseProtection = this.protection(parameters, baseBranch, warnings, signal);
+      protections.set(baseBranch, baseProtection);
+    }
     // GitHub only guarantees a current test merge SHA once mergeability is true.
     // A SHA retained while mergeability is being computed (or after a conflict)
     // must not establish the checks GitHub currently requires for this PR.
@@ -1021,9 +1029,7 @@ export class GitHubClient {
         warnings,
         signal,
       ),
-      baseBranch === defaultBranch
-        ? Promise.resolve(defaultProtection)
-        : this.protection(parameters, baseBranch, warnings, signal),
+      baseProtection,
       this.optional(
         'Pull request branch comparison',
         () =>
