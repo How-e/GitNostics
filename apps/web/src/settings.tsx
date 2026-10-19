@@ -34,11 +34,33 @@ export function SettingsPage({ exploreDemo }: { exploreDemo: () => void }) {
   const [discoveryError, setDiscoveryError] = useState('');
   const [query, setQuery] = useState('');
   const [disconnect, setDisconnect] = useState(false);
+  const settingsContext = useRef({ mode, settings: data.settings });
   useEffect(() => {
-    setSettings(data.settings);
-    setRetentionDays(String(data.settings.retentionDays));
-    setArtifactAgeDays(String(data.settings.artifactAgeDays));
-  }, [data.settings]);
+    const previous = settingsContext.current;
+    settingsContext.current = { mode, settings: data.settings };
+    setSettings((draft) => {
+      if (previous.mode !== mode) return data.settings;
+      const merged = { ...data.settings };
+      for (const key of Object.keys(merged) as (keyof AppSettings)[]) {
+        if (JSON.stringify(draft[key]) !== JSON.stringify(previous.settings[key])) {
+          Object.assign(merged, { [key]: draft[key] });
+        }
+      }
+      return merged;
+    });
+    const numericDraft = (draft: string, before: number, latest: number) =>
+      previous.mode !== mode ||
+      draft === String(before) ||
+      (draft.trim() !== '' && Number(draft) === latest)
+        ? String(latest)
+        : draft;
+    setRetentionDays((draft) =>
+      numericDraft(draft, previous.settings.retentionDays, data.settings.retentionDays),
+    );
+    setArtifactAgeDays((draft) =>
+      numericDraft(draft, previous.settings.artifactAgeDays, data.settings.artifactAgeDays),
+    );
+  }, [mode, data.settings]);
   useEffect(() => {
     const previous = discoveryContext.current;
     discoveryContext.current = { workspaceMode: mode, connection: data.connection };
