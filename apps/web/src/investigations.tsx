@@ -1,14 +1,6 @@
-import { useState } from 'react';
+import { DeferredContent } from './deferred-content';
+import { lazy, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
 import {
   ArrowRight,
   ArrowUpRight,
@@ -58,6 +50,10 @@ interface RunRow {
   repository: RepositoryRecord;
   run: WorkflowRun;
 }
+
+const DurationChart = lazy(() =>
+  import('./charts').then((module) => ({ default: module.DurationChart })),
+);
 
 export function PullRequestsPage() {
   const { data } = useApp();
@@ -415,41 +411,9 @@ export function ActionsPage() {
         >
           {trend.length ? (
             <div className="chart-container tall">
-              <ResponsiveContainer width="100%" height={210}>
-                <LineChart data={trend} margin={{ left: -15, right: 20, top: 20, bottom: 0 }}>
-                  <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="3 3" />
-                  <XAxis
-                    dataKey="name"
-                    tick={{ fontSize: 10, fill: 'var(--muted)' }}
-                    minTickGap={45}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 10, fill: 'var(--muted)' }}
-                    tickLine={false}
-                    axisLine={false}
-                    unit="m"
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      background: 'var(--raised)',
-                      border: '1px solid var(--line)',
-                      borderRadius: 7,
-                      fontSize: 12,
-                    }}
-                    formatter={(value) => [`${value} minutes`, 'Duration']}
-                  />
-                  <Line
-                    type="linear"
-                    dataKey="duration"
-                    stroke="var(--accent)"
-                    strokeWidth={1.5}
-                    dot={{ r: 2 }}
-                    isAnimationActive={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              <DeferredContent label="Loading chart..." chart>
+                <DurationChart data={trend} />
+              </DeferredContent>
             </div>
           ) : (
             <Empty title="No duration data">Durations appear after workflow synchronization.</Empty>

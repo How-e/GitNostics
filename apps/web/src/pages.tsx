@@ -1,14 +1,6 @@
-import { useState } from 'react';
+import { DeferredContent } from './deferred-content';
+import { lazy, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
 import {
   Activity,
   ArrowRight,
@@ -59,9 +51,9 @@ import {
   repositoryHref,
   unresolved,
 } from './format';
-export { ActionsPage, PullRequestsPage } from './investigations';
-export { SafeActionsPage, StoragePage } from './storage-actions';
-export { SettingsPage } from './settings';
+const WorkflowChart = lazy(() =>
+  import('./charts').then((module) => ({ default: module.WorkflowChart })),
+);
 
 export function AddRepository({ open, close }: { open: boolean; close: () => void }) {
   const { busy, mutate, mode } = useApp();
@@ -332,53 +324,9 @@ export function OverviewPage({ exploreDemo }: { exploreDemo: () => void }) {
               </div>
               {runs.length ? (
                 <div className="chart-container">
-                  <ResponsiveContainer width="100%" height={190}>
-                    <AreaChart
-                      data={workflowTrend}
-                      margin={{ left: -25, right: 14, top: 10, bottom: 0 }}
-                    >
-                      <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="3 3" />
-                      <XAxis
-                        dataKey="day"
-                        tick={{ fontSize: 10, fill: 'var(--muted)' }}
-                        axisLine={false}
-                        tickLine={false}
-                        minTickGap={40}
-                      />
-                      <YAxis
-                        allowDecimals={false}
-                        tick={{ fontSize: 10, fill: 'var(--muted)' }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          background: 'var(--raised)',
-                          border: '1px solid var(--line)',
-                          borderRadius: 7,
-                          fontSize: 12,
-                        }}
-                      />
-                      <Area
-                        type="linear"
-                        dataKey="success"
-                        name="Successful runs"
-                        stroke="var(--green)"
-                        fill="var(--green-faint)"
-                        strokeWidth={1.5}
-                        isAnimationActive={false}
-                      />
-                      <Area
-                        type="linear"
-                        dataKey="failure"
-                        name="Failed runs"
-                        stroke="var(--accent)"
-                        fill="var(--accent-faint)"
-                        strokeWidth={1.5}
-                        isAnimationActive={false}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  <DeferredContent label="Loading chart..." chart>
+                    <WorkflowChart data={workflowTrend} />
+                  </DeferredContent>
                 </div>
               ) : (
                 <Empty title="No workflow runs cached">

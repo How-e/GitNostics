@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import {
@@ -32,18 +32,38 @@ import { api, errorMessage, readMode, rememberMode, setCsrfToken, type Session }
 import { AppContext } from './context';
 import { Badge, Empty, FindingDialog, IconButton, Modal, Notifications } from './components';
 import { dateLabel, latestSync, relative } from './format';
-import {
-  ActionsPage,
-  ActivityPage,
-  FindingsPage,
-  OverviewPage,
-  PullRequestsPage,
-  RepositoriesPage,
-  RepositoryPage,
-  SafeActionsPage,
-  SettingsPage,
-  StoragePage,
-} from './pages';
+import { DeferredContent } from './deferred-content';
+
+const OverviewPage = lazy(() =>
+  import('./pages').then((module) => ({ default: module.OverviewPage })),
+);
+const RepositoriesPage = lazy(() =>
+  import('./pages').then((module) => ({ default: module.RepositoriesPage })),
+);
+const RepositoryPage = lazy(() =>
+  import('./pages').then((module) => ({ default: module.RepositoryPage })),
+);
+const FindingsPage = lazy(() =>
+  import('./pages').then((module) => ({ default: module.FindingsPage })),
+);
+const ActivityPage = lazy(() =>
+  import('./pages').then((module) => ({ default: module.ActivityPage })),
+);
+const ActionsPage = lazy(() =>
+  import('./investigations').then((module) => ({ default: module.ActionsPage })),
+);
+const PullRequestsPage = lazy(() =>
+  import('./investigations').then((module) => ({ default: module.PullRequestsPage })),
+);
+const StoragePage = lazy(() =>
+  import('./storage-actions').then((module) => ({ default: module.StoragePage })),
+);
+const SafeActionsPage = lazy(() =>
+  import('./storage-actions').then((module) => ({ default: module.SafeActionsPage })),
+);
+const SettingsPage = lazy(() =>
+  import('./settings').then((module) => ({ default: module.SettingsPage })),
+);
 
 const navigation = [
   { to: '/', label: 'Overview', icon: LayoutDashboard },
@@ -463,36 +483,41 @@ export function App() {
             }}
           >
             <main id="main-content" className="main-content">
-              <Routes>
-                <Route path="/" element={<OverviewPage exploreDemo={() => void switchMode()} />} />
-                <Route path="/repositories" element={<RepositoriesPage />} />
-                <Route path="/repositories/:owner/:repo" element={<RepositoryPage />} />
-                <Route path="/pull-requests" element={<PullRequestsPage />} />
-                <Route path="/actions" element={<ActionsPage />} />
-                <Route path="/storage" element={<StoragePage />} />
-                <Route path="/findings" element={<FindingsPage />} />
-                <Route path="/activity" element={<ActivityPage />} />
-                <Route
-                  path="/settings"
-                  element={<SettingsPage exploreDemo={() => void switchMode()} />}
-                />
-                <Route path="/safe-actions" element={<SafeActionsPage />} />
-                <Route
-                  path="*"
-                  element={
-                    <Empty
-                      title="Page not found"
-                      action={
-                        <Link to="/" className="button">
-                          Back to overview
-                        </Link>
-                      }
-                    >
-                      This workspace page doesn't exist.
-                    </Empty>
-                  }
-                />
-              </Routes>
+              <DeferredContent key={location.pathname} label="Loading page...">
+                <Routes>
+                  <Route
+                    path="/"
+                    element={<OverviewPage exploreDemo={() => void switchMode()} />}
+                  />
+                  <Route path="/repositories" element={<RepositoriesPage />} />
+                  <Route path="/repositories/:owner/:repo" element={<RepositoryPage />} />
+                  <Route path="/pull-requests" element={<PullRequestsPage />} />
+                  <Route path="/actions" element={<ActionsPage />} />
+                  <Route path="/storage" element={<StoragePage />} />
+                  <Route path="/findings" element={<FindingsPage />} />
+                  <Route path="/activity" element={<ActivityPage />} />
+                  <Route
+                    path="/settings"
+                    element={<SettingsPage exploreDemo={() => void switchMode()} />}
+                  />
+                  <Route path="/safe-actions" element={<SafeActionsPage />} />
+                  <Route
+                    path="*"
+                    element={
+                      <Empty
+                        title="Page not found"
+                        action={
+                          <Link to="/" className="button">
+                            Back to overview
+                          </Link>
+                        }
+                      >
+                        This workspace page doesn't exist.
+                      </Empty>
+                    }
+                  />
+                </Routes>
+              </DeferredContent>
             </main>
             <FindingDialog
               finding={data.findings.find((f) => f.id === findingId)}

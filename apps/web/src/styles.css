@@ -3314,3 +3314,13 @@ summary::-webkit-details-marker {
     padding-inline: 16px;
   }
 }
+
+.chart-loading {
+  display: flex;
+  min-height: 180px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 15px;
+  color: var(--muted);
+}

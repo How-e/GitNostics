@@ -1,14 +1,6 @@
-import { useEffect, useState } from 'react';
+import { DeferredContent } from './deferred-content';
+import { lazy, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
 import {
   ArrowUpRight,
   Box,
@@ -46,6 +38,10 @@ interface ArtifactRow {
   syncedAt: string | null;
 }
 const artifactKey = (row: ArtifactRow) => `${row.repository}:${row.artifact.id}`;
+
+const StorageChart = lazy(() =>
+  import('./charts').then((module) => ({ default: module.StorageChart })),
+);
 
 export function StoragePage() {
   const { data, mode, busy, preview } = useApp();
@@ -155,41 +151,9 @@ export function StoragePage() {
       >
         {chart.length ? (
           <div className="chart-container storage-chart">
-            <ResponsiveContainer width="100%" height={180}>
-              <AreaChart data={chart} margin={{ top: 12, left: 0, right: 25, bottom: 0 }}>
-                <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="day"
-                  tick={{ fill: 'var(--muted)', fontSize: 10 }}
-                  minTickGap={60}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis
-                  tick={{ fill: 'var(--muted)', fontSize: 10 }}
-                  unit=" MB"
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: 'var(--raised)',
-                    border: '1px solid var(--line)',
-                    borderRadius: 7,
-                    fontSize: 12,
-                  }}
-                  formatter={(value) => [`${value} MB`, 'Retained artifacts']}
-                />
-                <Area
-                  dataKey="megabytes"
-                  stroke="var(--accent)"
-                  fill="var(--accent-faint)"
-                  strokeWidth={1.5}
-                  type="linear"
-                  isAnimationActive={false}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+            <DeferredContent label="Loading chart..." chart>
+              <StorageChart data={chart} />
+            </DeferredContent>
           </div>
         ) : (
           <Empty title="No historical snapshots yet">
