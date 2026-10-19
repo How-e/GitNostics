@@ -450,6 +450,50 @@ describe('SQLite persistence', () => {
     expect(second.tasks('live')[0]?.status).toBe('completed');
   });
 
+  it('rejects invalid individual artifact sizes before replacing snapshots or history', () => {
+    const store = open();
+    store.saveSnapshot('live', snapshot());
+    for (const sizeBytes of [-1, 0.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 53]) {
+      for (const expired of [true, false]) {
+        const invalid = snapshot();
+        invalid.stars = 999;
+        invalid.artifacts[0] = { ...invalid.artifacts[0]!, sizeBytes, expired };
+        expect(() => store.saveSnapshot('live', invalid)).toThrow('Invalid artifact');
+      }
+    }
+    const overflow = snapshot();
+    overflow.artifacts = [
+      { ...overflow.artifacts[0]!, sizeBytes: Number.MAX_SAFE_INTEGER },
+      { ...overflow.artifacts[0]!, id: 2, sizeBytes: 1 },
+    ];
+    expect(() => store.saveSnapshot('live', overflow)).toThrow('Invalid artifact');
+    expect(store.repositories('live')[0]?.snapshot?.stars).toBe(2);
+    expect(store.storageHistory('live')).toMatchObject([{ bytes: 123 }]);
+  });
+
+  it('records complete observed storage totals, excluding expired artifacts and incomplete samples', () => {
+    const file = path();
+    const first = open(file);
+    const sample = snapshot();
+    sample.artifacts = [
+      { ...sample.artifacts[0]!, sizeBytes: 2048 },
+      { ...sample.artifacts[0]!, id: 2, sizeBytes: 4096 },
+      { ...sample.artifacts[0]!, id: 3, sizeBytes: 8192, expired: true },
+    ];
+    first.saveSnapshot('live', sample);
+    first.saveSnapshot('demo', snapshot());
+    first.saveSnapshot('live', {
+      ...sample,
+      artifacts: [sample.artifacts[0]!],
+      collectionState: { artifacts: false, pullRequests: true, runs: true, config: true },
+    });
+    first.saveSnapshot('live', { ...sample, artifacts: [] });
+    first.close();
+    const second = open(file);
+    expect(second.storageHistory('live').map((entry) => entry.bytes)).toEqual([6144, 0]);
+    expect(second.storageHistory('demo').map((entry) => entry.bytes)).toEqual([123]);
+  });
+
   it('reports the latest attempt timestamp by repository and mode after failed sync and restart', () => {
     const file = path();
     const first = open(file);
@@ -519,6 +563,9 @@ describe('SQLite persistence', () => {
       store.reconcileFindings(mode, 'example/project', [finding()]);
       store.saveBaseline(mode, 'example/project', snapshot().config);
       store.enqueueTask(mode, 'example/project');
+      store.audit(mode, 'sync', 'Repository synchronized', 'example/project');
+      store.audit(mode, 'sync', 'Other repository synchronized', 'example/other');
+      store.audit(mode, 'settings', 'Global preferences updated');
     }
     store.removeRepository('live', 'example/project');
     expect(store.findings('live')).toEqual([]);
@@ -526,6 +573,11 @@ describe('SQLite persistence', () => {
     expect(store.baseline('live', 'example/project')).toBeUndefined();
     expect(store.storageHistory('live')).toEqual([]);
     expect(store.tasks('live')).toEqual([]);
+    expect(store.activity('live').map((event) => event.repository)).toEqual([
+      undefined,
+      'example/other',
+    ]);
+    expect(store.activity('demo')).toHaveLength(3);
     expect(store.repositories('demo')).toHaveLength(1);
     expect(store.findings('demo')).toHaveLength(1);
   });

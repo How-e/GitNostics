@@ -269,9 +269,14 @@ export class Store {
       );
   }
   removeRepository(mode: DataMode, fullName: string): void {
-    this.#db
-      .prepare('DELETE FROM repositories WHERE mode = ? AND full_name = ?')
-      .run(mode, fullName);
+    this.#transaction(() => {
+      this.#db
+        .prepare('DELETE FROM audit_events WHERE mode = ? AND repository = ?')
+        .run(mode, fullName);
+      this.#db
+        .prepare('DELETE FROM repositories WHERE mode = ? AND full_name = ?')
+        .run(mode, fullName);
+    });
   }
   saveSnapshot(mode: DataMode, snapshot: RepositorySnapshot): void {
     const capturedAt = now();
@@ -287,9 +292,15 @@ export class Store {
         })),
       })),
     };
+    if (
+      snapshot.artifacts.some(
+        (artifact) => !Number.isSafeInteger(artifact.sizeBytes) || artifact.sizeBytes < 0,
+      )
+    )
+      throw new Error('Invalid artifact storage size.');
     const bytes = snapshot.artifacts
       .filter((artifact) => !artifact.expired)
-      .reduce((total, artifact) => total + Math.max(0, artifact.sizeBytes), 0);
+      .reduce((total, artifact) => total + artifact.sizeBytes, 0);
     if (!Number.isSafeInteger(bytes)) throw new Error('Invalid artifact storage size.');
     this.#transaction(() => {
       this.upsertRepository(mode, snapshot.fullName, {
