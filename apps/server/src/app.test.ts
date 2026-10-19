@@ -85,6 +85,59 @@ afterEach(async () => {
 });
 
 describe('HTTP workspace API with a synthetic GitHub service', () => {
+  it('keeps encoded API aliases authenticated, CSRF-protected, and uncacheable', async () => {
+    const { app, store, github, get, post, headers } = await harness({ writes: true });
+    store.saveSnapshot('live', snapshot());
+    for (const prefix of ['/api', '/%61pi', '/a%70i', '/ap%69']) {
+      const url = `${prefix}/dashboard?mode=live`;
+      const denied = await app.inject({ url, headers: { host } });
+      expect(denied.statusCode).toBe(401);
+      expect(denied.headers['cache-control']).toBe('no-store');
+      const dashboard = await get(url);
+      expect(dashboard.statusCode).toBe(200);
+      expect(dashboard.json<Dashboard>().repositories).toHaveLength(1);
+      expect(dashboard.headers['cache-control']).toBe('no-store');
+    }
+    const health = await app.inject({ url: '/%61pi/health?source=review', headers: { host } });
+    expect(health.statusCode).toBe(200);
+    expect(health.headers['cache-control']).toBe('no-store');
+    const action = { repository: 'northstar/api', kind: 'rerun_failed', runId: 1000 };
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/%61pi/actions/preview',
+          headers: { host },
+          payload: action,
+        })
+      ).statusCode,
+    ).toBe(401);
+    const preview = (await post('/api/actions/preview', action)).json<ActionPreview>();
+    expect(preview.allowed).toBe(true);
+    const payload = { previewId: preview.id, confirmation: preview.confirmation };
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/%61pi/actions/execute',
+          headers: { host },
+          payload,
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/%61pi/actions/execute',
+          headers: { host, cookie: headers.cookie },
+          payload,
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(github.execute).not.toHaveBeenCalled();
+  });
+
   it('protects discovery, preserves incomplete results, and sanitizes upstream errors', async () => {
     const { app, github, get } = await harness({ auth: true });
     expect(

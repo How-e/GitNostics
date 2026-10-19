@@ -28,7 +28,7 @@ import {
 import { GitHubClient } from '@gitnostics/github';
 import { Store } from './db';
 import { readConfig, type Config } from './config';
-import { installSecurity, safeMessage } from './security';
+import { apiRoutePath, installSecurity, safeMessage } from './security';
 import { SyncManager, type SnapshotClient } from './sync';
 import { demoSnapshots } from './demo';
 import { Backups } from './backups';
@@ -91,7 +91,7 @@ export async function createApp(
   await app.register(rateLimit, { max: 240, timeWindow: '1 minute' });
   installSecurity(app, config);
   app.addHook('onSend', async (request, reply) => {
-    if (request.url.startsWith('/api/')) reply.header('Cache-Control', 'no-store');
+    if (apiRoutePath(request)) reply.header('Cache-Control', 'no-store');
   });
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof z.ZodError)

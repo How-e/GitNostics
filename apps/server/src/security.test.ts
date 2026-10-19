@@ -36,6 +36,71 @@ afterEach(async () => {
 });
 
 describe('request boundary', () => {
+  it.each(['/%61pi/private', '/a%70i/private', '/ap%69/private?source=review'])(
+    'protects the matched API route for encoded alias %s',
+    async (url) => {
+      const { app, headers } = await harness(true);
+      expect((await app.inject({ url, headers: { host } })).statusCode).toBe(401);
+      const login = await app.inject({
+        method: 'POST',
+        url: '/api/login',
+        headers,
+        payload: { token },
+      });
+      expect(login.statusCode).toBe(200);
+      const signedInHeaders = {
+        host,
+        cookie: String(login.headers['set-cookie']).split(';')[0]!,
+        'x-csrf-token': login.json<{ csrfToken: string }>().csrfToken,
+      };
+      expect((await app.inject({ url, headers: signedInHeaders })).statusCode).toBe(200);
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url,
+            headers: { host, cookie: signedInHeaders.cookie },
+          })
+        ).statusCode,
+      ).toBe(403);
+      expect((await app.inject({ method: 'POST', url, headers: signedInHeaders })).statusCode).toBe(
+        200,
+      );
+    },
+  );
+
+  it('preserves public API aliases while requiring CSRF for an encoded login route', async () => {
+    const { app } = await harness(true);
+    const session = await app.inject({ url: '/%61pi/session?source=review', headers: { host } });
+    expect(session.statusCode).toBe(200);
+    expect(session.json()).toMatchObject({ authenticated: false, requiresLogin: true });
+    const cookie = String(session.headers['set-cookie']).split(';')[0]!;
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/%61pi/login?source=review',
+          headers: { host, cookie },
+          payload: { token },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/%61pi/login?source=review',
+          headers: {
+            host,
+            cookie,
+            'x-csrf-token': session.json<{ csrfToken: string }>().csrfToken,
+          },
+          payload: { token },
+        })
+      ).statusCode,
+    ).toBe(200);
+  });
+
   it('compares secrets of different lengths without throwing and redacts bounded errors', () => {
     expect(equalSecret('a', 'a')).toBe(true);
     expect(equalSecret('a', 'a much longer value')).toBe(false);
