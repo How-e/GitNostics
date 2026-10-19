@@ -18,6 +18,14 @@ export function safeMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : 'Operation failed';
   return redactLog(message.slice(0, 16_384)).slice(0, 500);
 }
+export function apiRoutePath(request: FastifyRequest): string | undefined {
+  // Fastify matches encoded static segments to their canonical registered route.
+  // Use that same identity so URL aliases cannot escape API security boundaries.
+  const route = request.routeOptions.url;
+  if (route?.startsWith('/api/')) return route;
+  const path = request.url.split('?')[0];
+  return path?.startsWith('/api/') ? path : undefined;
+}
 export function installSecurity(app: FastifyInstance, config: Config) {
   const sessions = new Map<string, Session>();
   const origin = new URL(config.publicOrigin);
@@ -50,8 +58,8 @@ export function installSecurity(app: FastifyInstance, config: Config) {
       return reply.code(403).send({ error: 'Origin is not permitted.' });
     if (request.headers['sec-fetch-site'] === 'cross-site')
       return reply.code(403).send({ error: 'Cross-site requests are not permitted.' });
-    const path = request.url.split('?')[0];
-    if (!path.startsWith('/api/')) return;
+    const path = apiRoutePath(request);
+    if (!path) return;
     const publicRoute = ['/api/health', '/api/session', '/api/login'].includes(path);
     if (!publicRoute && config.authToken && !current(request)?.authenticated)
       return reply.code(401).send({ error: 'Operator sign-in required.' });

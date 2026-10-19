@@ -28,7 +28,7 @@ import {
 import { GitHubClient } from '@gitnostics/github';
 import { Store } from './db';
 import { readConfig, type Config } from './config';
-import { installSecurity, safeMessage } from './security';
+import { apiRoutePath, installSecurity, safeMessage } from './security';
 import { SyncManager, type SnapshotClient } from './sync';
 import { demoSnapshots } from './demo';
 import { Backups } from './backups';
@@ -91,7 +91,7 @@ export async function createApp(
   await app.register(rateLimit, { max: 240, timeWindow: '1 minute' });
   installSecurity(app, config);
   app.addHook('onSend', async (request, reply) => {
-    if (request.url.startsWith('/api/')) reply.header('Cache-Control', 'no-store');
+    if (apiRoutePath(request)) reply.header('Cache-Control', 'no-store');
   });
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof z.ZodError)
@@ -576,10 +576,14 @@ export async function createApp(
   if (existsSync(resolve(staticRoot, 'index.html'))) {
     await app.register(fastifyStatic, { root: staticRoot, index: ['index.html'] });
     app.setNotFoundHandler(async (request, reply) => {
+      const path = request.url.split('?')[0]!;
+      const repositoryPage =
+        path.startsWith('/repositories/') &&
+        repoNameSchema.safeParse(path.slice('/repositories/'.length).replace(/\/$/, '')).success;
       if (
         request.method === 'GET' &&
-        !request.url.startsWith('/api/') &&
-        !request.url.split('?')[0].includes('.')
+        !path.startsWith('/api/') &&
+        (!path.includes('.') || repositoryPage)
       )
         return reply.type('text/html').sendFile('index.html');
       return reply.code(404).send({ error: 'Route not found.' });

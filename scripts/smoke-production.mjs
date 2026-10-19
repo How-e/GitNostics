@@ -88,10 +88,20 @@ async function request(path, credentials, method = 'GET', body) {
 }
 try {
   await start();
-  for (const path of ['/', '/repositories/northstar/api']) {
+  for (const path of [
+    '/',
+    '/repositories/northstar/api',
+    '/repositories/example.org/project.js',
+    '/repositories/example/.github?mode=live',
+  ]) {
     const response = await fetch(`${origin}${path}`);
     assert.equal(response.status, 200);
     assert.match(await response.text(), /<title>GitNostics/);
+  }
+  for (const path of ['/assets/missing.js', '/api/missing.json']) {
+    const response = await fetch(`${origin}${path}`);
+    assert.equal(response.status, 404);
+    assert.doesNotMatch(await response.text(), /<title>GitNostics/);
   }
   const credentials = await session();
   await request('/api/demo/reset', credentials, 'POST', {});

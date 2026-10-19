@@ -112,6 +112,13 @@ export const migrations = [
         CHECK(acknowledged_before_rule_suppression IN (0,1));
     `,
   },
+  {
+    version: 5,
+    name: 'index-latest-repository-sync-attempt',
+    sql: `
+      CREATE INDEX sync_tasks_by_repository ON sync_tasks(mode,repository,created_at);
+    `,
+  },
 ] as const;
 
 export function migrate(db: DatabaseSync): void {

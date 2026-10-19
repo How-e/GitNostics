@@ -83,6 +83,20 @@ export function redactStoredText(text: string): string {
   return text
     .slice(0, 65_536)
     .replace(
+      /(["'])((?:set-)?cookie[ \t]*:[ \t]*)(?:\\.|(?!\1)[^\\\r\n])*(?:\1|(?=\r?\n|$))|(\b(?:set-)?cookie\b["'][ \t]*[:=][ \t]*)(?:(["'])(?:\\.|(?!\4)[^\\\r\n])*(?:\4|(?=\r?\n|$))|[^\r\n]*)|(\b(?:set-)?cookie\b[ \t]*[:=][ \t]*)[^\r\n]*/gi,
+      (
+        _match,
+        headerQuote: string | undefined,
+        header: string | undefined,
+        prefix: string | undefined,
+        valueQuote: string | undefined,
+        rawPrefix: string | undefined,
+      ) =>
+        headerQuote
+          ? `${headerQuote}${header}[REDACTED COOKIE]${headerQuote}`
+          : `${prefix ?? rawPrefix}${valueQuote ?? ''}[REDACTED COOKIE]${valueQuote ?? ''}`,
+    )
+    .replace(
       /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g,
       '[REDACTED PRIVATE KEY]',
     )
@@ -230,43 +244,35 @@ export class Store {
   }
   upsertRepository(mode: DataMode, fullName: string, patch: Partial<RepositoryRecord> = {}): void {
     repoNameSchema.parse(fullName);
-    const existing = this.#get<RepositoryRow>(
-      'SELECT * FROM repositories WHERE mode = ? AND full_name = ?',
-      mode,
-      fullName,
-    );
-    const record = existing
-      ? repositoryRecord(existing)
-      : {
-          fullName,
-          mode,
-          favorite: false,
-          selected: true,
-          syncedAt: null,
-          syncStatus: 'idle' as const,
-          error: null,
-          snapshot: null,
-        };
-    const next = { ...record, ...patch, fullName, mode };
-    if (next.snapshot && next.snapshot.fullName !== fullName)
-      throw new Error('Snapshot does not belong to this repository.');
+    const columns = ['mode', 'full_name'];
+    const values: SQLInputValue[] = [mode, fullName];
+    const updates: string[] = [];
+    const include = (column: string, value: SQLInputValue | undefined): void => {
+      if (value === undefined) throw new Error('Repository patch contains an undefined value.');
+      columns.push(column);
+      values.push(value);
+      updates.push(`${column}=excluded.${column}`);
+    };
+    // Only fixed, explicitly supplied fields become SQL columns. In particular,
+    // status and preference changes must not parse or re-encode a large snapshot.
+    // New repositories use the same defaults declared by the versioned schema.
+    if (Object.hasOwn(patch, 'favorite')) include('favorite', Number(patch.favorite));
+    if (Object.hasOwn(patch, 'selected')) include('selected', Number(patch.selected));
+    if (Object.hasOwn(patch, 'syncedAt')) include('synced_at', patch.syncedAt);
+    if (Object.hasOwn(patch, 'syncStatus')) include('sync_status', patch.syncStatus);
+    if (Object.hasOwn(patch, 'error'))
+      include('error', patch.error ? redactStoredText(patch.error).slice(0, 2000) : null);
+    if (Object.hasOwn(patch, 'snapshot')) {
+      if (patch.snapshot && patch.snapshot.fullName !== fullName)
+        throw new Error('Snapshot does not belong to this repository.');
+      include('snapshot_json', patch.snapshot ? encoded(patch.snapshot) : null);
+    }
     this.#db
       .prepare(
-        `INSERT INTO repositories(mode,full_name,favorite,selected,synced_at,sync_status,error,snapshot_json)
-      VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(mode,full_name) DO UPDATE SET
-      favorite=excluded.favorite,selected=excluded.selected,synced_at=excluded.synced_at,
-      sync_status=excluded.sync_status,error=excluded.error,snapshot_json=excluded.snapshot_json`,
+        `INSERT INTO repositories(${columns.join(',')}) VALUES(${values.map(() => '?').join(',')})
+         ON CONFLICT(mode,full_name) ${updates.length ? `DO UPDATE SET ${updates.join(',')}` : 'DO NOTHING'}`,
       )
-      .run(
-        mode,
-        fullName,
-        Number(next.favorite),
-        Number(next.selected),
-        next.syncedAt,
-        next.syncStatus,
-        next.error ? redactStoredText(next.error).slice(0, 2000) : null,
-        next.snapshot ? encoded(next.snapshot) : null,
-      );
+      .run(...values);
   }
   removeRepository(mode: DataMode, fullName: string): void {
     this.#transaction(() => {

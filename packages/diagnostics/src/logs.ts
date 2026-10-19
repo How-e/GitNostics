@@ -23,6 +23,21 @@ export function redactLog(input: string): string {
   // eslint-disable-next-line no-control-regex -- ANSI control sequences are intentionally removed.
   const text = lines.join('\n').replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '');
   const redacted = text
+    // Preserve quoted JSON/curl context while removing every cookie in a header value.
+    .replace(
+      /(["'])((?:set-)?cookie[ \t]*:[ \t]*)(?:\\.|(?!\1)[^\\\r\n])*(?:\1|(?=\r?\n|$))|(\b(?:set-)?cookie\b["'][ \t]*[:=][ \t]*)(?:(["'])(?:\\.|(?!\4)[^\\\r\n])*(?:\4|(?=\r?\n|$))|[^\r\n]*)|(\b(?:set-)?cookie\b[ \t]*[:=][ \t]*)[^\r\n]*/gi,
+      (
+        _match,
+        headerQuote: string | undefined,
+        header: string | undefined,
+        prefix: string | undefined,
+        valueQuote: string | undefined,
+        rawPrefix: string | undefined,
+      ) =>
+        headerQuote
+          ? `${headerQuote}${header}[REDACTED COOKIE]${headerQuote}`
+          : `${prefix ?? rawPrefix}${valueQuote ?? ''}[REDACTED COOKIE]${valueQuote ?? ''}`,
+    )
     .replace(
       /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g,
       '[REDACTED PRIVATE KEY]',

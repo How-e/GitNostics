@@ -51,6 +51,7 @@ import {
   repositoryHref,
   unresolved,
 } from './format';
+import { workflowTrend } from './workflow-calendar';
 const WorkflowChart = lazy(() =>
   import('./charts').then((module) => ({ default: module.WorkflowChart })),
 );
@@ -127,17 +128,7 @@ export function OverviewPage({ exploreDemo }: { exploreDemo: () => void }) {
   const failures = runs.filter(failed);
   const totalBytes = artifacts.reduce((sum, artifact) => sum + artifact.sizeBytes, 0);
   const busyRepos = repos.filter((r) => ['syncing', 'queued'].includes(r.syncStatus));
-  const workflowTrend = Array.from({ length: 14 }, (_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (13 - i));
-    const day = date.toISOString().slice(0, 10);
-    const dayRuns = runs.filter((r) => r.createdAt.slice(0, 10) === day);
-    return {
-      day: date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-      success: dayRuns.filter((r) => r.conclusion === 'success').length,
-      failure: dayRuns.filter(failed).length,
-    };
-  });
+  const trend = workflowTrend(runs);
   return (
     <>
       <PageHeading
@@ -309,7 +300,7 @@ export function OverviewPage({ exploreDemo }: { exploreDemo: () => void }) {
             </Panel>
             <Panel
               title="Workflow pulse"
-              description="Run conclusions in the cached 14-day window"
+              description="Run conclusions by UTC date in the cached 14-day window"
               action={<Badge>14 days</Badge>}
             >
               <div className="chart-legend">
@@ -325,7 +316,7 @@ export function OverviewPage({ exploreDemo }: { exploreDemo: () => void }) {
               {runs.length ? (
                 <div className="chart-container">
                   <DeferredContent label="Loading chart..." chart>
-                    <WorkflowChart data={workflowTrend} />
+                    <WorkflowChart data={trend} />
                   </DeferredContent>
                 </div>
               ) : (
@@ -647,7 +638,7 @@ export function RepositoryPage() {
         }
       />
       <div className="repo-detail-meta">
-        <Badge>{snapshot?.private ? 'Private' : 'Public'}</Badge>
+        <Badge>{snapshot ? (snapshot.private ? 'Private' : 'Public') : 'Visibility unknown'}</Badge>
         {snapshot?.language && <Badge>{snapshot.language}</Badge>}
         <span>
           <GitBranch size={14} />

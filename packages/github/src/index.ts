@@ -420,17 +420,24 @@ export class GitHubClient {
     parameters: Parameters,
     property: string | undefined,
     signal?: AbortSignal,
+    maximum = 500,
   ): Promise<Collection> {
     const items: Json[] = [];
-    for (let page = 1; page <= 5; page++) {
-      const response = await this.request(route, { ...parameters, per_page: 100, page }, signal);
+    const perPage = Math.min(100, maximum);
+    for (let page = 1; page <= Math.ceil(maximum / perPage); page++) {
+      const response = await this.request(
+        route,
+        { ...parameters, per_page: perPage, page },
+        signal,
+      );
       const payload = property ? object(response.data)[property] : response.data;
       if (!Array.isArray(payload))
         throw new GitHubError('GitHub returned an unexpected collection');
       const batch = array(payload);
-      items.push(...batch);
+      const remaining = maximum - items.length;
+      items.push(...batch.slice(0, remaining));
       const hasNext = /<[^>]+>;\s*rel="next"/.test(String(response.headers.link ?? ''));
-      if (!hasNext && batch.length < 100) return { items, complete: true };
+      if (batch.length > remaining) return { items, complete: false };
       if (!hasNext) return { items, complete: true };
     }
     return { items, complete: false };
@@ -615,6 +622,7 @@ export class GitHubClient {
             { ...parameters, state: 'open', sort: 'updated', direction: 'desc' },
             undefined,
             signal,
+            25,
           ),
         warnings,
         signal,
@@ -627,6 +635,7 @@ export class GitHubClient {
             parameters,
             'workflow_runs',
             signal,
+            30,
           ),
         warnings,
         signal,
@@ -728,18 +737,18 @@ export class GitHubClient {
           ? 'Repository is outside the selected GitHub App installation; write permissions are unavailable'
           : 'Installation repository membership could not be confirmed; write permissions are unavailable',
       );
-    for (const [name, result] of [
-      ['Pull requests', prs],
-      ['Workflow runs', runs],
-      ['Artifacts', artifacts],
+    for (const [name, result, maximum] of [
+      ['Pull requests', prs, 25],
+      ['Workflow runs', runs, 30],
+      ['Artifacts', artifacts, 500],
     ] as const)
       if (result && !result.complete)
         warnings.push(
-          `${name} truncated at 500 items; totals and diagnostics cover the returned sample`,
+          `${name} truncated at ${maximum} items; totals and diagnostics cover the returned sample`,
         );
-    if ((prs?.items.length ?? 0) > 25)
+    if (prs && !prs.complete)
       warnings.push('Pull request details limited to the 25 most recently updated open requests');
-    if ((runs?.items.length ?? 0) > 30)
+    if (runs && !runs.complete)
       warnings.push('Workflow history limited to 30 recent runs; rates describe this sample');
     let jobsComplete = true;
     const pullRequests = (
