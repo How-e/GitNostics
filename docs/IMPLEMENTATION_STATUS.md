@@ -1,6 +1,6 @@
 # Implementation status
 
-Updated: 2026-10-18. **Working initial implementation; not release-ready.**
+Updated: 2026-10-19. **Working initial implementation; not release-ready.**
 
 ## Current acceptance scope
 
@@ -12,7 +12,7 @@ Publication hardening was rechecked locally: `pnpm check` passed (127 unit/integ
 
 ## Implemented scope
 
-The pnpm workspace contains React/Vite/Tailwind, Fastify, native SQLite/WAL with four embedded migrations and a stable Drizzle proxy adapter, official Octokit integration, deterministic diagnostics, and CI/container configuration.
+The pnpm workspace contains React/Vite/Tailwind, Fastify, native SQLite/WAL with versioned embedded migrations and a stable Drizzle proxy adapter, official Octokit integration, deterministic diagnostics, and CI/container configuration.
 
 ### M1 connectivity follow-through
 
@@ -48,6 +48,46 @@ Frontend route groups and charts load on demand with accessible loading/error st
 - Read-only default, operator login with rotated sessions, CSRF/Host/Origin protection, bounded requests/logs/cache/history, permission/membership-checked expiring action previews, confirmations and auditing. Demo operations only simulate.
 - Eight primary navigation areas plus Safe Action Center, dark/light/system themes, mobile navigation/artifact layouts, URL filters/pagination, evidence dialogs, onboarding and empty/error states.
 - Per-mode retention, on-demand/automatic seven-file backup rotation with partial-copy protection, production static hosting, health/version identification and shutdown handling. AI and external notification providers are interfaces only.
+
+## Application review and focused fixes — 2026-10-19
+
+The review covered GitHub authentication, transport, collection bounds and evidence; diagnostic rules and analytics; HTTP/session/action boundaries; SQLite migrations, persistence, retention and backup recovery; frontend behavior, accessibility and data presentation; production serving; and CI/container/privacy tooling. Confirmed fixes are separate review PRs. They remain open; this ledger does not establish that they are present on `main`.
+
+| Area               | Confirmed issue and fix                                                                                                                                      | PR                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
+| Security           | Encoded API route aliases bypassed authentication and CSRF checks and lacked no-store headers; enforce the matched API route identity.                       | [#6](https://github.com/How-e/GitNostics/pull/6)   |
+| Security           | Cookie headers survived log and stored-evidence redaction; redact request/response cookie values across all three layers.                                    | [#14](https://github.com/How-e/GitNostics/pull/14) |
+| Diagnostics        | Head-only checks missed authoritative test-merge results; select the applicable commit and preserve source/SHA provenance.                                   | [#10](https://github.com/How-e/GitNostics/pull/10) |
+| CI                 | Container verification unnecessarily waited for the main verification job; schedule the independent jobs together.                                           | [#3](https://github.com/How-e/GitNostics/pull/3)   |
+| CI                 | Browser setup downloaded unused full Chromium; install the default headless shell used by the existing tests.                                                | [#7](https://github.com/How-e/GitNostics/pull/7)   |
+| Performance        | Per-repository polling scanned/sorted task history; add migration 5 with the matching repository-attempt index.                                              | [#4](https://github.com/How-e/GitNostics/pull/4)   |
+| Performance        | PR/run collection fetched history discarded by the retained sample; stop at the existing 25/30 limits and preserve completeness warnings.                    | [#13](https://github.com/How-e/GitNostics/pull/13) |
+| Performance        | Each PR targeting the same nondefault branch repeated protection reads; share in-flight promises within one snapshot.                                        | [#17](https://github.com/How-e/GitNostics/pull/17) |
+| Performance        | Metadata updates parsed/redacted/rewrote unchanged snapshots; update only supplied repository fields.                                                        | [#18](https://github.com/How-e/GitNostics/pull/18) |
+| Recovery           | Interrupted backup partials escaped rotation indefinitely; reclaim generated regular partials after a conservative stale interval.                           | [#11](https://github.com/How-e/GitNostics/pull/11) |
+| Usability          | Investigation dialogs retained stale or other-workspace data; derive current evidence from mode-scoped identities and clear missing selections.              | [#5](https://github.com/How-e/GitNostics/pull/5)   |
+| Usability          | Expired sessions and CSRF state required a reload; recover sign-in state, clear cached evidence, and discard old-session responses without replaying writes. | [#12](https://github.com/How-e/GitNostics/pull/12) |
+| Usability          | Save controls disagreed about numeric settings validity; validate integer drafts consistently before submitting.                                             | [#9](https://github.com/How-e/GitNostics/pull/9)   |
+| Usability          | Closed mobile navigation remained tabbable and lacked keyboard focus handling; manage drawer focus, Escape, resize and authorization-loss cleanup.           | [#19](https://github.com/How-e/GitNostics/pull/19) |
+| Usability          | Unrelated settings refreshes discarded unsaved preferences; rebase untouched fields while preserving edited numeric strings and resetting on mode changes.   | [#22](https://github.com/How-e/GitNostics/pull/22) |
+| Data presentation  | UTC date buckets used local labels and preserved offset date prefixes; normalize instants and label the UTC basis explicitly.                                | [#21](https://github.com/How-e/GitNostics/pull/21) |
+| Data presentation  | Unsynchronized repositories were labeled public; keep visibility unknown until a snapshot supplies evidence.                                                 | [#16](https://github.com/How-e/GitNostics/pull/16) |
+| Data presentation  | Fractional page parameters produced overlapping slices and fractional labels; normalize bounded integer pagination consistently.                             | [#8](https://github.com/How-e/GitNostics/pull/8)   |
+| Data presentation  | Rounding seconds could display `0m 60s`; round before dividing into minutes and seconds.                                                                     | [#15](https://github.com/How-e/GitNostics/pull/15) |
+| Production routing | Direct repository links containing dots returned 404; allow validated repository detail paths while preserving missing asset/API 404s.                       | [#20](https://github.com/How-e/GitNostics/pull/20) |
+| Development        | Windows CRLF checkouts failed formatting on unchanged source; enforce repository LF text checkouts while preserving binary detection.                        | [#23](https://github.com/How-e/GitNostics/pull/23) |
+
+PR #17 depends on #10, and #22 depends on #9; their PR bases preserve focused diffs. Other fixes remain separate PRs against `main`. A disposable combined checkout verifies their interactions, including session loss while mobile navigation is open and old responses arriving after reauthentication. Overlapping independent changes can still require merge resolution; repeat required checks on each final merged/rebased head.
+
+Independent combined verification on Node 26.1.0 passed `pnpm check` with **337 tests across 25 files**, formatting, lint, strict TypeScript and production build. All **five Chromium browser workflows** passed, including mobile keyboard navigation. Compiled production smoke passed root/nested/dotted routes, missing asset/API 404s, restart, backup, stopped-service restore, SQLite integrity/foreign keys and demo/live isolation with zero GitHub requests. Five privacy-guard regressions plus working-tree/index/reachable-history scanning passed; the production dependency audit reported no known vulnerabilities. A fresh Windows clone with `core.autocrlf=true` also passed the complete formatting check with LF text checkouts. The combined frontend entry was about 359 kB (113.5 kB gzip); this is a build measurement, not a runtime performance guarantee.
+
+CI retains every formatting, lint, typecheck, unit/integration, build, production restore, privacy/history, dependency-audit, browser and container persistence assertion. The [baseline run](https://github.com/How-e/GitNostics/actions/runs/39191173656) spent about 70 seconds in verification followed by 42 seconds in the container job. In [the concurrency PR run](https://github.com/How-e/GitNostics/actions/runs/39306111806), both started together and finished in 66 and 37 seconds respectively. These are observed runs with runner/network variability, not guaranteed runtimes. Headless-only installation removes an unused download; its observed 18-second setup did not establish a timing improvement over the baseline. No path filters, test removals, shortened privacy history, security settings or branch protection changes were used.
+
+Live repository inspection found only CI and Dependabot workflows. CodeQL default setup reported `not-configured`, and the analyses endpoint reported no analysis. There was no CodeQL job to time or optimize; no scanning configuration was changed. Existing dependency PRs #1 and #2 had separate failing checks and were left unchanged by this application review.
+
+Performance measurements use bounded synthetic data: indexing reduced 100 latest-attempt lookups over 100,000 historical tasks from about 1.8 seconds to about 1 millisecond; one 1.4 MB snapshot fixture's 20 favorite toggles fell from about 706 ms to 21 ms; 25 same-base PRs reduced protection requests from 75 to 3. These demonstrate the avoided work, without establishing sustained-load or universal latency claims. Backup partial cleanup uses a 24-hour age heuristic and does not establish safe concurrent service ownership of a shared data directory. Redaction remains heuristic.
+
+Application verification uses injected transports, synthetic credentials and disposable demo data. No real GitHub mutation is used to validate these fixes. Live policy/log/artifact comparisons, actual installation revocation/recovery, off-host backups, remote TLS/proxy deployment, shared-data-directory operation, physical mobile/screen-reader acceptance and sustained multi-repository load remain unverified in this review.
 
 ## Executed verification
 
