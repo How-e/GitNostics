@@ -520,6 +520,7 @@ export function App() {
               </DeferredContent>
             </main>
             <FindingDialog
+              key={findingId ?? 'closed'}
               finding={data.findings.find((f) => f.id === findingId)}
               close={() => setFindingId(undefined)}
             />

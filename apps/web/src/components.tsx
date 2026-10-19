@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
   ArrowDown,
@@ -378,6 +378,22 @@ export function FindingDialog({
   close: () => void;
 }) {
   const { busy, mutate, data } = useApp();
+  const [feedback, setFeedback] = useState<{
+    findingId: string;
+    message: string;
+    error: boolean;
+  }>();
+  async function updateFinding(path: string, body: unknown, success: string, method: string) {
+    if (!finding) return;
+    const findingId = finding.id;
+    setFeedback(undefined);
+    const result = await mutate(path, body, success, method);
+    setFeedback({
+      findingId,
+      message: result === undefined ? 'The change could not be saved. Please try again.' : success,
+      error: result === undefined,
+    });
+  }
   return (
     <Modal
       open={Boolean(finding)}
@@ -450,7 +466,7 @@ export function FindingDialog({
                 value={finding.status}
                 disabled={busy}
                 onChange={(event) =>
-                  void mutate(
+                  void updateFinding(
                     `/api/findings/${encodeURIComponent(finding.id)}`,
                     { status: event.target.value as FindingStatus },
                     'Finding status updated',
@@ -487,7 +503,7 @@ export function FindingDialog({
                 className="button"
                 disabled={busy || data.settings.suppressedRules.includes(finding.ruleId)}
                 onClick={() =>
-                  void mutate(
+                  void updateFinding(
                     '/api/settings',
                     {
                       ...data.settings,
@@ -504,6 +520,9 @@ export function FindingDialog({
               </button>
             </div>
           </div>
+          {feedback?.findingId === finding.id && (
+            <p role={feedback.error ? 'alert' : 'status'}>{feedback.message}</p>
+          )}
         </>
       )}
     </Modal>

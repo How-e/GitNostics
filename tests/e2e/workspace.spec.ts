@@ -43,7 +43,10 @@ test('onboards with isolated demo data, navigates evidence, acknowledges a findi
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByRole('heading', { name: 'Supporting evidence' })).toBeVisible();
   await dialog.getByRole('combobox', { name: 'Finding status' }).selectOption('acknowledged');
-  await expect(page.getByRole('status')).toContainText('Finding status updated');
+  await expect(dialog.getByRole('status')).toContainText('Finding status updated');
+  await expect(dialog.getByRole('combobox', { name: 'Finding status' })).toHaveValue(
+    'acknowledged',
+  );
   await dialog.getByRole('button', { name: 'Close dialog' }).click();
   await page.getByRole('combobox', { name: 'Finding status' }).selectOption('acknowledged');
   await expect(page.locator('.finding-row')).toHaveCount(1);
