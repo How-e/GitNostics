@@ -18,6 +18,8 @@ M1 connectivity hardening covers cached ETag revalidation after an authenticatio
 
 ## Follow-on work
 
+The latest follow-through hardens M3 log sampling/redaction and M4 storage validation/removal, adds a compiled stopped-service backup restore drill, and splits frontend routes/charts into deferred bundles. Fixture acceptance covers deterministic log budgets, Unicode excerpt bounds, known storage totals, incomplete samples and restart isolation. Live log/inventory comparisons, real installation recovery and owner-controlled write acceptance remain open; see the current check ledger.
+
 The first implementation should prioritize correct supported behavior and visible limits. These capabilities must remain explicitly unavailable until implemented and verified:
 
 - Multi-user authorization, GitHub user OAuth, and multiple simultaneous installation management.

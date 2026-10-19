@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readdir, rename, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
 
 const prefix = resolve(tmpdir(), 'gitnostics-production-');
 const dataDir = await mkdtemp(prefix);
@@ -102,6 +103,7 @@ try {
     ...dashboard.settings,
     retentionDays: 45,
   });
+  const backedUp = await request('/api/dashboard?mode=demo', credentials);
   const backup = await request('/api/backup', credentials, 'POST', {});
   assert.ok((await readdir(join(dataDir, 'backups'))).includes(backup.filename));
   await stop();
@@ -115,6 +117,41 @@ try {
     dashboard.findings.map((f) => f.id).sort(),
   );
   assert.equal((await request('/api/dashboard?mode=live', nextCredentials)).repositories.length, 0);
+  // Prove recovery from the backup, rather than merely reopening the active database.
+  // A post-backup change must disappear after restoring the earlier snapshot.
+  await request('/api/settings?mode=demo', nextCredentials, 'PUT', {
+    ...restored.settings,
+    retentionDays: 60,
+  });
+  assert.equal(
+    (await request('/api/dashboard?mode=demo', nextCredentials)).settings.retentionDays,
+    60,
+  );
+  await stop();
+  const recoveryDirectory = join(dataDir, 'recovery');
+  await mkdir(recoveryDirectory);
+  for (const filename of await readdir(dataDir)) {
+    if (['gitnostics.sqlite', 'gitnostics.sqlite-wal', 'gitnostics.sqlite-shm'].includes(filename))
+      await rename(join(dataDir, filename), join(recoveryDirectory, filename));
+  }
+  await copyFile(join(dataDir, 'backups', backup.filename), join(dataDir, 'gitnostics.sqlite'));
+  const restoredDatabase = new DatabaseSync(join(dataDir, 'gitnostics.sqlite'), { readOnly: true });
+  try {
+    assert.equal(restoredDatabase.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
+    assert.deepEqual(restoredDatabase.prepare('PRAGMA foreign_key_check').all(), []);
+  } finally {
+    restoredDatabase.close();
+  }
+  await start();
+  const recoveryCredentials = await session();
+  const recovered = await request('/api/dashboard?mode=demo', recoveryCredentials);
+  assert.deepEqual(recovered.repositories, backedUp.repositories);
+  assert.deepEqual(recovered.findings, backedUp.findings);
+  assert.equal(recovered.settings.retentionDays, 45);
+  assert.equal(
+    (await request('/api/dashboard?mode=live', recoveryCredentials)).repositories.length,
+    0,
+  );
   console.log(
     JSON.stringify({
       node: process.version,
@@ -122,6 +159,8 @@ try {
       staticRoutes: 'pass',
       restartPersistence: 'pass',
       backup: 'pass',
+      stoppedServiceRestore: 'pass',
+      sqliteIntegrity: 'pass',
       modeIsolation: 'pass',
       githubRequests: 0,
     }),

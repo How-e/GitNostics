@@ -43,6 +43,8 @@ Before upgrading, take a consistent backup, record the version/commit and lockfi
 
 To restore: stop the server; preserve the current database plus any `-wal`/`-shm` files in a protected recovery directory; replace the main database with the selected consistent backup; ensure stale WAL/shared-memory files are not reused; verify ownership; restart the matching compatible application version; confirm repository/finding timestamps and integrity. Do not restore over a running connection. Perform a restore drill before treating backups as an accepted recovery plan.
 
+`pnpm test:production` exercises this procedure in a disposable directory with demo fixtures: it preserves the stopped database and sidecars, copies an online backup into place, runs SQLite integrity/foreign-key checks, restarts the compiled server and verifies recovered repositories, findings and settings. A post-backup settings change must disappear. This does not attest recovery of an operator's actual private installation or off-host backup process.
+
 ## Health and shutdown
 
 `GET /api/health` is a minimal liveness/version check, not evidence that GitHub credentials, every repository, or every diagnostic is healthy. Inspect connection/sync status separately. Service shutdown handles termination signals; give it time to cancel network work and close SQLite before forcing termination. Container Compose configuration allows a 120-second stop grace period.
