@@ -280,6 +280,52 @@ describe('PR evidence rules', () => {
     expect(findings.map((value) => value.ruleId)).toContain('pr.draft');
   });
 
+  it('evaluates approval completeness independently from check collection', () => {
+    const completeReviews = diagnose(
+      snapshot({
+        pullRequests: [
+          pr({ approvals: 0, requiredApprovals: 2, checksComplete: false, reviewsComplete: true }),
+        ],
+      }),
+    );
+    expect(completeReviews.find((value) => value.ruleId === 'pr.missing-approvals')).toMatchObject({
+      confidence: 'confirmed',
+      severity: 'medium',
+    });
+    const incompleteReviews = diagnose(
+      snapshot({
+        pullRequests: [
+          pr({
+            approvals: 0,
+            requiredApprovals: 2,
+            changesRequested: true,
+            requiredChecks: ['build'],
+            checksComplete: true,
+            reviewsComplete: false,
+          }),
+        ],
+        collectionState: { pullRequests: false, runs: true, artifacts: true, config: true },
+      }),
+    );
+    expect(
+      incompleteReviews.find((value) => value.ruleId === 'pr.missing-approvals'),
+    ).toMatchObject({
+      confidence: 'insufficient_evidence',
+      severity: 'info',
+    });
+    expect(
+      incompleteReviews.find((value) => value.ruleId === 'pr.changes-requested'),
+    ).toMatchObject({
+      confidence: 'insufficient_evidence',
+    });
+    expect(
+      incompleteReviews.find((value) => value.ruleId === 'pr.changes-requested')?.explanation,
+    ).toContain('later approval or dismissal');
+    expect(
+      incompleteReviews.find((value) => value.ruleId === 'pr.required-check-missing'),
+    ).toMatchObject({ confidence: 'probable', severity: 'medium' });
+  });
+
   it('keeps fingerprints stable across head commits and evidence changes but isolates repository and PR', () => {
     const first = diagnose(snapshot({ pullRequests: [pr({ requiredChecks: ['test'] })] }))[0]!;
     const next = diagnose(
@@ -585,6 +631,30 @@ describe('artifact retention recommendations', () => {
 });
 
 describe('collection authority', () => {
+  it.each([
+    { checksComplete: false },
+    { reviewsComplete: false },
+    { protectionKnown: false },
+    { mergeable: null },
+  ])('does not resolve PR findings when per-PR evidence is incomplete: %o', (partial) => {
+    expect(
+      authoritativeFindingTypes(
+        snapshot({
+          collectionState: { pullRequests: true, runs: true, artifacts: true, config: true },
+          pullRequests: [pr(partial)],
+        }),
+      ),
+    ).toEqual(['workflow', 'storage', 'configuration']);
+  });
+
+  it('retains PR authority when a dirty merge state establishes conflict despite a null boolean', () => {
+    expect(
+      authoritativeFindingTypes(
+        snapshot({ pullRequests: [pr({ mergeable: null, mergeableState: 'dirty' })] }),
+      ),
+    ).toContain('pull_request');
+  });
+
   it('preserves compatibility with complete snapshots and maps partial collection types independently', () => {
     expect(authoritativeFindingTypes(snapshot())).toEqual([
       'pull_request',

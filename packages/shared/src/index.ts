@@ -67,6 +67,7 @@ export interface PullRequest {
   requiresCodeOwnerReview?: boolean;
   protectionKnown: boolean;
   checksComplete?: boolean;
+  reviewsComplete?: boolean;
   reviewDecision?: string;
   behindBy?: number;
   workflowPathFilters?: string[];

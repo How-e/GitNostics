@@ -31,6 +31,87 @@ afterEach(async () => {
 });
 
 describe('synchronization orchestration without outbound GitHub requests', () => {
+  it('preserves acknowledged PR evidence through incomplete sync and resolves it only with complete collection', async () => {
+    const snapshot = demoSnapshots()[0]!;
+    const complete = { pullRequests: true, runs: true, artifacts: true, config: true };
+    snapshot.collectionState = complete;
+    const partial: RepositorySnapshot = {
+      ...snapshot,
+      pullRequests: [],
+      collectionState: { ...complete, pullRequests: false },
+      warnings: ['Synthetic partial PR collection'],
+    };
+    const client: SnapshotClient = {
+      snapshot: vi
+        .fn()
+        .mockResolvedValueOnce(snapshot)
+        .mockResolvedValueOnce(partial)
+        .mockResolvedValueOnce({ ...partial, collectionState: complete, warnings: [] }),
+    };
+    const { store, sync } = context(client);
+    store.upsertRepository('live', snapshot.fullName);
+    sync.queue('live');
+    await vi.waitFor(() => expect(store.tasks('live')[0]!.status).toBe('completed'));
+    const conflict = store
+      .findings('live')
+      .find((finding) => finding.ruleId === 'pr.merge-conflict')!;
+    expect(conflict).toBeDefined();
+    store.updateFinding('live', conflict.id, 'acknowledged');
+    sync.queue('live');
+    await vi.waitFor(() =>
+      expect(store.tasks('live').filter((task) => task.status === 'completed')).toHaveLength(2),
+    );
+    expect(store.findings('live').find((finding) => finding.id === conflict.id)!.status).toBe(
+      'acknowledged',
+    );
+    expect(store.repositories('live')[0]!.snapshot!.warnings).toContain(
+      'Synthetic partial PR collection',
+    );
+    sync.queue('live');
+    await vi.waitFor(() =>
+      expect(store.tasks('live').filter((task) => task.status === 'completed')).toHaveLength(3),
+    );
+    expect(store.findings('live').find((finding) => finding.id === conflict.id)!.status).toBe(
+      'resolved',
+    );
+    expect(store.repositories('demo')).toEqual([]);
+  });
+
+  it('spaces automatic retries by the configured interval after failure and restart', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-18T12:00:00Z'));
+    const client: SnapshotClient = {
+      snapshot: vi.fn(async () => {
+        throw new Error('Synthetic upstream outage');
+      }),
+    };
+    const { store, sync } = context(client);
+    try {
+      store.saveSnapshot('live', demoSnapshots()[0]!);
+      store.saveSettings('live', { ...store.settings('live'), syncIntervalMinutes: 5 });
+      vi.setSystemTime(new Date('2026-10-18T12:10:00Z'));
+      // Simulate a failed attempt recovered from a prior process.
+      const failed = store.enqueueTask('live', 'northstar/api');
+      store.finishTask(failed.id, 'Synthetic upstream outage');
+      sync.start();
+      await vi.advanceTimersByTimeAsync(4 * 60_000);
+      expect(client.snapshot).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(client.snapshot).toHaveBeenCalledTimes(1);
+      expect(store.repositories('live')[0]!.syncStatus).toBe('error');
+      await vi.advanceTimersByTimeAsync(4 * 60_000);
+      expect(client.snapshot).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(client.snapshot).toHaveBeenCalledTimes(2);
+      // An operator may explicitly retry immediately.
+      expect(sync.queue('live', 'northstar/api')).toBe(1);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(client.snapshot).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('limits concurrency to two, coalesces duplicate requests, and ignores deselected repositories', async () => {
     const calls = new Map<string, ReturnType<typeof deferredSnapshot>>();
     const client: SnapshotClient = {

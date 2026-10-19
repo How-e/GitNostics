@@ -47,6 +47,13 @@ interface PRRow {
   repository: RepositoryRecord;
   pr: PullRequest;
 }
+const incompleteMergeEvidence = ({ repository, pr }: PRRow) =>
+  !pr.protectionKnown ||
+  pr.mergeable === null ||
+  pr.checksComplete === false ||
+  pr.reviewsComplete === false ||
+  repository.snapshot?.collectionState?.pullRequests === false;
+
 interface RunRow {
   repository: RepositoryRecord;
   run: WorkflowRun;
@@ -78,7 +85,7 @@ export function PullRequestsPage() {
           (params.get('state') === 'draft'
             ? row.pr.draft
             : params.get('state') === 'unknown'
-              ? !row.pr.protectionKnown || row.pr.mergeable === null
+              ? incompleteMergeEvidence(row)
               : findingsFor(row).length > 0)),
     )
     .sort((a, b) => b.pr.updatedAt.localeCompare(a.pr.updatedAt));
@@ -97,7 +104,7 @@ export function PullRequestsPage() {
         <RepositoryFilter />
         <FilterSelect label="Pull request state" parameter="state">
           <option value="">All open pull requests</option>
-          <option value="blocked">With blocker findings</option>
+          <option value="blocked">With diagnostic findings</option>
           <option value="draft">Drafts</option>
           <option value="unknown">Incomplete evidence</option>
         </FilterSelect>
@@ -125,16 +132,13 @@ export function PullRequestsPage() {
                     {row.pr.draft ? <Badge>Draft</Badge> : null}
                     {findingsFor(row).length ? (
                       <Badge tone="medium">
-                        {findingsFor(row).length} blocker finding
+                        {findingsFor(row).length} diagnostic finding
                         {findingsFor(row).length !== 1 ? 's' : ''}
                       </Badge>
-                    ) : (
-                      <Badge>
-                        {row.pr.protectionKnown && row.pr.mergeable !== null
-                          ? 'No supported blockers found'
-                          : 'Incomplete merge evidence'}
-                      </Badge>
-                    )}
+                    ) : !incompleteMergeEvidence(row) ? (
+                      <Badge>No supported blockers found</Badge>
+                    ) : null}
+                    {incompleteMergeEvidence(row) && <Badge>Incomplete merge evidence</Badge>}
                     <span>
                       <CheckCircle2 size={13} />
                       {row.pr.checks.filter((c) => c.status === 'success').length}/
@@ -185,6 +189,28 @@ export function PullRequestsPage() {
                   Branch protection evidence is unavailable. Check results alone do not establish
                   merge eligibility.
                 </p>
+              </div>
+            )}
+            {selected.pr.mergeable === null && (
+              <div className="permission-notice">
+                <CircleHelp size={18} />
+                <p>Mergeability is unavailable. Merge eligibility still needs verification.</p>
+              </div>
+            )}
+            {(selected.pr.checksComplete === false ||
+              (selected.pr.checksComplete === undefined &&
+                selected.repository.snapshot?.collectionState?.pullRequests === false)) && (
+              <div className="permission-notice">
+                <CircleHelp size={18} />
+                <p>Check evidence is incomplete. Missing results may not have been collected.</p>
+              </div>
+            )}
+            {(selected.pr.reviewsComplete === false ||
+              (selected.pr.reviewsComplete === undefined &&
+                selected.repository.snapshot?.collectionState?.pullRequests === false)) && (
+              <div className="permission-notice">
+                <CircleHelp size={18} />
+                <p>Review evidence is incomplete. Approval counts may omit reviews.</p>
               </div>
             )}
             <dl className="observation-meta">

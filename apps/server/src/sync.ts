@@ -23,11 +23,12 @@ export class SyncManager {
       const interval = this.store.settings('live').syncIntervalMinutes;
       if (interval > 0)
         for (const repository of this.store.repositories('live')) {
-          if (
-            repository.selected &&
-            (!repository.syncedAt ||
-              Date.now() - Date.parse(repository.syncedAt) >= interval * 60_000)
-          )
+          const lastAttempt = this.store.latestSyncAttemptAt('live', repository.fullName);
+          const lastRefresh = Math.max(
+            repository.syncedAt ? Date.parse(repository.syncedAt) : 0,
+            lastAttempt ? Date.parse(lastAttempt) : 0,
+          );
+          if (repository.selected && Date.now() - lastRefresh >= interval * 60_000)
             this.queue('live', repository.fullName);
         }
       this.pump();

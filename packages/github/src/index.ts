@@ -933,7 +933,7 @@ export class GitHubClient {
           prs?.complete &&
           prs.items.length <= 25 &&
           pullRequests.length === prs.items.length &&
-          pullRequests.every((pr) => pr.checksComplete && pr.protectionKnown),
+          pullRequests.every((pr) => pr.checksComplete && pr.reviewsComplete && pr.protectionKnown),
         ),
         runs: Boolean(runs?.complete && runs.items.length <= 30 && jobsComplete),
         artifacts: Boolean(artifacts?.complete),
@@ -1071,10 +1071,15 @@ export class GitHubClient {
       if (!prior || iso(review.submitted_at) >= iso(prior.submitted_at))
         latestReviews.set(actor, review);
     }
-    const checksComplete = Boolean(checks?.complete && statuses?.complete && reviews?.complete);
+    const checksComplete = Boolean(checks?.complete && statuses?.complete);
+    const reviewsComplete = Boolean(reviews?.complete);
     if (!checksComplete)
       warnings.push(
-        `Pull request #${number(pr.number)} checks or reviews incomplete; absence does not establish a blocker`,
+        `Pull request #${number(pr.number)} checks incomplete; absence does not establish a blocker`,
+      );
+    if (!reviewsComplete)
+      warnings.push(
+        `Pull request #${number(pr.number)} reviews incomplete; review requirements cannot be established from the returned sample`,
       );
     return {
       number: number(pr.number),
@@ -1088,6 +1093,7 @@ export class GitHubClient {
       mergeableState: string(pr.mergeable_state, 'unknown'),
       checks: mappedChecks,
       checksComplete,
+      reviewsComplete,
       approvals: [...latestReviews.values()].filter((review) => review.state === 'APPROVED').length,
       changesRequested: [...latestReviews.values()].some(
         (review) => review.state === 'CHANGES_REQUESTED',

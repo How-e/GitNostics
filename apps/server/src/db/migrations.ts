@@ -104,6 +104,14 @@ export const migrations = [
       CREATE INDEX resolved_finding_retention ON findings(mode,status,resolved_at);
     `,
   },
+  {
+    version: 4,
+    name: 'preserve-acknowledgment-during-rule-suppression',
+    sql: `
+      ALTER TABLE findings ADD COLUMN acknowledged_before_rule_suppression INTEGER NOT NULL DEFAULT 0
+        CHECK(acknowledged_before_rule_suppression IN (0,1));
+    `,
+  },
 ] as const;
 
 export function migrate(db: DatabaseSync): void {

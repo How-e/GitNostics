@@ -409,6 +409,7 @@ describe('GitHub REST collection and mapping', () => {
       mergeableState: 'unknown',
       protectionKnown: true,
       checksComplete: true,
+      reviewsComplete: true,
       approvals: 1,
       changesRequested: false,
       behindBy: 3,
@@ -463,6 +464,7 @@ describe('GitHub REST collection and mapping', () => {
     expect(snapshot.pullRequests[0]).toMatchObject({
       protectionKnown: false,
       checksComplete: false,
+      reviewsComplete: true,
     });
     expect(snapshot.pullRequests[0]?.requiredChecks).toBeUndefined();
     expect(snapshot.config.inaccessible).toContain('branchProtection');
@@ -474,6 +476,53 @@ describe('GitHub REST collection and mapping', () => {
       config: false,
       artifacts: true,
     });
+  });
+
+  it.each(['check-runs', 'statuses', 'reviews'] as const)(
+    'keeps independent check and review coverage when %s cannot be read',
+    async (endpoint) => {
+      const fetch = transport(
+        api((url) =>
+          url.pathname.endsWith(`/${endpoint}`)
+            ? json({ message: 'not permitted' }, 403)
+            : passthrough(),
+        ),
+      );
+      const snapshot = await new GitHubClient({ fetch }).snapshot('octo/project');
+      expect(snapshot.pullRequests[0]).toMatchObject({
+        checksComplete: endpoint === 'reviews',
+        reviewsComplete: endpoint !== 'reviews',
+        protectionKnown: true,
+      });
+      expect(snapshot.collectionState?.pullRequests).toBe(false);
+      expect(snapshot.warnings).toContain(
+        endpoint === 'reviews'
+          ? 'Pull request #7 reviews incomplete; review requirements cannot be established from the returned sample'
+          : 'Pull request #7 checks incomplete; absence does not establish a blocker',
+      );
+    },
+  );
+
+  it('marks bounded review pagination incomplete without discarding complete check evidence', async () => {
+    const fetch = transport(
+      api((url) =>
+        url.pathname.endsWith('/reviews')
+          ? json([{ user: { login: 'a' }, state: 'CHANGES_REQUESTED', submitted_at: now }], 200, {
+              link: '<https://api.github.com/repos/octo/project/pulls/7/reviews?page=6>; rel="next"',
+            })
+          : passthrough(),
+      ),
+    );
+    const snapshot = await new GitHubClient({ fetch }).snapshot('octo/project');
+    expect(snapshot.pullRequests[0]).toMatchObject({
+      checksComplete: true,
+      reviewsComplete: false,
+      changesRequested: true,
+    });
+    expect(snapshot.collectionState?.pullRequests).toBe(false);
+    expect(fetch.mock.calls.filter(([input]) => String(input).includes('/reviews?'))).toHaveLength(
+      5,
+    );
   });
 
   it('keeps public access connected when an optional endpoint requires authentication', async () => {

@@ -44,6 +44,7 @@ type FindingRow = {
   last_observed_at: string;
   resolved_at: string | null;
   suppression_source: 'manual' | 'rule' | null;
+  acknowledged_before_rule_suppression: number;
   input_json: string;
 };
 export interface SyncTask {
@@ -344,9 +345,10 @@ export class Store {
       const byId = new Map(existing.map((row) => [row.id, row]));
       const seen = new Set<string>();
       const statement = this.#db
-        .prepare(`INSERT INTO findings(id,mode,repository,rule_id,fingerprint,status,first_detected_at,last_observed_at,resolved_at,input_json,suppression_source)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,
-        last_observed_at=excluded.last_observed_at,resolved_at=NULL,input_json=excluded.input_json,suppression_source=excluded.suppression_source`);
+        .prepare(`INSERT INTO findings(id,mode,repository,rule_id,fingerprint,status,first_detected_at,last_observed_at,resolved_at,input_json,suppression_source,acknowledged_before_rule_suppression)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,
+        last_observed_at=excluded.last_observed_at,resolved_at=NULL,input_json=excluded.input_json,suppression_source=excluded.suppression_source,
+        acknowledged_before_rule_suppression=excluded.acknowledged_before_rule_suppression`);
       for (const input of inputs) {
         const id = createHash('sha256')
           .update(JSON.stringify([mode, repository, input.ruleId, input.fingerprint]))
@@ -363,7 +365,8 @@ export class Store {
               : null;
         const status: FindingStatus = suppressionSource
           ? 'suppressed'
-          : old?.status === 'acknowledged'
+          : old?.status === 'acknowledged' ||
+              (old?.suppression_source === 'rule' && old.acknowledged_before_rule_suppression === 1)
             ? 'acknowledged'
             : old
               ? 'active'
@@ -380,6 +383,10 @@ export class Store {
           null,
           encoded(input, 512 * 1024),
           suppressionSource,
+          Number(
+            suppressionSource === 'rule' &&
+              (old?.status === 'acknowledged' || old?.acknowledged_before_rule_suppression === 1),
+          ),
         );
         if (
           (!old || old.status === 'resolved') &&
@@ -395,7 +402,7 @@ export class Store {
         }
       }
       const resolveFinding = this.#db.prepare(
-        "UPDATE findings SET status='resolved',resolved_at=?,suppression_source=NULL WHERE id=? AND mode=?",
+        "UPDATE findings SET status='resolved',resolved_at=?,suppression_source=NULL,acknowledged_before_rule_suppression=0 WHERE id=? AND mode=?",
       );
       for (const old of existing) {
         const remainsSuppressed =
@@ -426,7 +433,7 @@ export class Store {
     if (!validStatuses.has(status)) throw new Error('Unsupported finding status.');
     this.#db
       .prepare(
-        'UPDATE findings SET status=?,resolved_at=?,suppression_source=? WHERE mode=? AND id=?',
+        'UPDATE findings SET status=?,resolved_at=?,suppression_source=?,acknowledged_before_rule_suppression=0 WHERE mode=? AND id=?',
       )
       .run(
         status,
@@ -667,6 +674,16 @@ export class Store {
       'SELECT * FROM sync_tasks WHERE mode=? ORDER BY created_at DESC,rowid DESC LIMIT 100',
       mode,
     ).map(taskRecord);
+  }
+  latestSyncAttemptAt(mode: DataMode, repository: string): string | null {
+    return (
+      this.#get<{ attempted_at: string }>(
+        `SELECT COALESCE(finished_at,started_at,created_at) AS attempted_at FROM sync_tasks
+         WHERE mode=? AND repository=? ORDER BY created_at DESC,rowid DESC LIMIT 1`,
+        mode,
+        repository,
+      )?.attempted_at ?? null
+    );
   }
   recoverTasks(): number {
     return this.#transaction(() => {

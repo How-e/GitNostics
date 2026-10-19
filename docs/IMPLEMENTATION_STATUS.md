@@ -2,8 +2,6 @@
 
 Updated: 2026-10-18. **Working initial implementation; not release-ready.**
 
-Developer Program review on 2026-10-18 found an implemented GitHub API development integration and a documented support email, matching GitHub's published project criteria. Account enrollment, badge award, and external mailbox receipt are not verified. See the [eligibility evidence and remaining operator steps](INTEGRATION_READINESS.md#github-developer-program-eligibility-review).
-
 ## Current acceptance scope
 
 Windows local use is the current deployment scope. The operator confirmed on 2026-10-18 that all M0 acceptance blockers are complete and verified. The operator also reported completing the documented automated checks, demo/manual checks, and production-mode public and private repository access using a configured GitHub App. These are operator-reported results, separate from the agent-executed checks below; no repository names, installation identifiers, credentials, or private evidence are recorded here.
@@ -14,15 +12,25 @@ Publication hardening was rechecked locally: `pnpm check` passed (127 unit/integ
 
 ## Implemented scope
 
-The pnpm workspace contains React/Vite/Tailwind, Fastify, native SQLite/WAL with three embedded migrations and a stable Drizzle proxy adapter, official Octokit integration, deterministic diagnostics, and CI/container configuration.
+The pnpm workspace contains React/Vite/Tailwind, Fastify, native SQLite/WAL with four embedded migrations and a stable Drizzle proxy adapter, official Octokit integration, deterministic diagnostics, and CI/container configuration.
 
 ### M1 connectivity follow-through
+
+Automatic polling now measures its configured interval from the latest durable attempt as well as the last successful snapshot. Failed reads therefore wait the configured interval, including after restart; explicit operator retries remain immediate. This behavior is verified with synthetic time and a fixture client.
 
 Connectivity hardening now covers conditional-cache authentication recovery, validator removal after a response stops providing an ETag, rejection of unexpected API redirects, and prevention of late responses restoring a disconnected client. Repository discovery returns an explicit completeness flag at its five-page/500-repository limit. Settings distinguishes unavailable installations and development PATs, displays incomplete discovery, and cancels stale discovery across mode/connection changes. Live discovery/add/sync requests after disconnection return an explicit conflict instead of silently accepting work that cannot run.
 
 Synthetic HTTP integration coverage verifies authenticated discovery, partial-result propagation, sanitized upstream failures, disconnection without repository creation, and retention of selected repositories, warning/coverage metadata and the last successful timestamp across a failed sync and process restart. GitHub transport fixtures cover installation-token renewal, membership changes, permissions, pagination, retry/rate-limit handling and active/queued request cancellation. These are fixture checks, not additional real-installation acceptance. No GitHub mutations were performed.
 
 The approved public support contact is documented in [support guidance](SUPPORT.md). [Integration readiness](INTEGRATION_READINESS.md) separately tracks external mailbox receipt, publication/hosted CI, and detailed read-only acceptance.
+
+### M2 PR diagnostic follow-through
+
+Check/status coverage and review coverage are now tracked independently. Approval deficits use review completeness, while incomplete requested-change evidence explicitly allows for a later superseding review. Explicitly incomplete per-PR evidence prevents automatic resolution of prior PR findings even when an aggregate collection flag claims completeness. Older cached snapshots remain supported.
+
+An additive fourth migration preserves acknowledgment while a rule is temporarily suppressed, including across restart. Explicit manual lifecycle changes clear that remembered state. Fixture orchestration tests verify that incomplete sync retains acknowledged PR findings and that a later complete collection resolves absent findings. PR navigation exposes incomplete evidence independently of related findings and labels observations as diagnostic findings without asserting that each blocks merging.
+
+These are deterministic implementation checks. Comparison with authorized live PR state, real token/permission recovery, and sustained polling behavior remain separate acceptance limits; no live GitHub writes are used to validate them.
 
 - Public access and one environment-configured GitHub App installation; discovery/selection, conditional requests, retries/rate tracking, cancellation, partial-data warnings, sampled PRs/workflows/jobs/artifacts/issues/branches/commits and supported configuration reads.
 - Evidence-backed PR rules; redacted failure classification, fingerprints and incidents; server-calculated workflow rates, regressions and repeated jobs; artifact analytics/history; saved configuration baselines.
@@ -33,13 +41,15 @@ The approved public support contact is documented in [support guidance](SUPPORT.
 
 ## Executed verification
 
+The latest M1/M2 follow-through passed `pnpm check` on Node 26.1.0: 153 tests across 11 files, formatting, lint, strict TypeScript and production build. All four Playwright workflows, compiled production restart/backup/isolation smoke (zero GitHub requests), and five privacy-guard regressions plus repository scanning passed. Independent cross-package review identified and corrected completeness and unknown-mergeability lifecycle gaps. Hosted checks for the new pushed commit must be observed separately. The bundle-size advisory remains; live PR comparisons and real installation recovery were not performed in this pass.
+
 Windows host. This M1 follow-through passed the full unit/integration/component suite and compiled production smoke on bundled Node 24.19.0 LTS; `pnpm check` passed on host Node 26.1.0. The earlier M0 verification recorded Node 24.22.0 LTS separately. The 2026-10-18 publication review independently reran `pnpm check` (127 tests), all four Playwright workflows, compiled production smoke (zero GitHub requests), all five privacy guard tests plus repository scanning, and the production dependency audit on Node 26.1.0; all passed. An independent read-only review of the connectivity changes found no actionable defect. No live GitHub mutations were used for verification.
 
 | Check                                                                 | Result                                                                                                                                                                            |
 | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Frozen dependency installation                                        | Passed                                                                                                                                                                            |
 | Formatting, lint, strict TypeScript                                   | Passed through pnpm check                                                                                                                                                         |
-| Unit/integration/component tests                                      | 127 passed across 10 files on Node 24.19.0 and 26.1.0                                                                                                                             |
+| Unit/integration/component tests                                      | 153 passed across 11 files on Node 26.1.0; older 127-test baseline also ran on Node 24.19.0                                                                                       |
 | Production build                                                      | Vite and esbuild passed                                                                                                                                                           |
 | Compiled production smoke                                             | Passed: root/nested SPA routes, stable findings/settings after restart, backup, demo/live isolation; no GitHub requests                                                           |
 | Playwright                                                            | 4 passed: onboarding/navigation/PR/workflows/findings, exact rerun/deletion simulation confirmation, settings/theme persistence, mobile 390px navigation/storage                  |

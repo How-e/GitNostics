@@ -163,7 +163,7 @@ describe('SQLite persistence', () => {
     open(file);
     const inspected = new DatabaseSync(file);
     expect(inspected.prepare('SELECT COUNT(*) AS count FROM schema_migrations').get()?.count).toBe(
-      3,
+      migrations.length,
     );
     inspected.close();
   });
@@ -305,6 +305,52 @@ describe('SQLite persistence', () => {
     expect(store.findings('live').every((row) => row.status === 'resolved')).toBe(true);
   });
 
+  it('restores acknowledgment after rule suppression across restart without another notification', () => {
+    const file = path();
+    const first = open(file);
+    first.reconcileFindings('live', 'example/project', [finding()]);
+    const original = first.findings('live')[0]!;
+    first.updateFinding('live', original.id, 'acknowledged');
+    first.saveSettings('live', { ...defaultSettings, suppressedRules: [finding().ruleId] });
+    first.reconcileFindings('live', 'example/project', [finding()]);
+    expect(first.findings('live')[0]?.status).toBe('suppressed');
+    first.close();
+
+    const second = open(file);
+    second.reconcileFindings('live', 'example/project', [finding()]);
+    // An incomplete observation must not resolve or forget the suppressed record.
+    second.reconcileFindings('live', 'example/project', [], [], []);
+    second.saveSettings('live', defaultSettings);
+    second.reconcileFindings('live', 'example/project', [finding({ ruleVersion: 2 })]);
+    expect(second.findings('live')).toMatchObject([
+      {
+        id: original.id,
+        status: 'acknowledged',
+        ruleVersion: 2,
+        firstDetectedAt: original.firstDetectedAt,
+      },
+    ]);
+    expect(second.notifications('live')).toHaveLength(1);
+
+    // A supported resolution ends that acknowledgment; recurrence is active again.
+    second.reconcileFindings('live', 'example/project', []);
+    second.reconcileFindings('live', 'example/project', [finding()]);
+    expect(second.findings('live')[0]?.status).toBe('active');
+    expect(second.notifications('live')).toHaveLength(2);
+  });
+
+  it('honors a manual lifecycle override while a rule suppression is applied', () => {
+    const store = open();
+    store.reconcileFindings('live', 'example/project', [finding()]);
+    const id = store.findings('live')[0]!.id;
+    store.updateFinding('live', id, 'acknowledged');
+    store.reconcileFindings('live', 'example/project', [finding()], [finding().ruleId]);
+    store.updateFinding('live', id, 'active');
+    store.reconcileFindings('live', 'example/project', [finding()], [finding().ruleId]);
+    store.reconcileFindings('live', 'example/project', [finding()]);
+    expect(store.findings('live')[0]?.status).toBe('active');
+  });
+
   it('caps resolved history while preserving current unresolved findings', () => {
     const file = path();
     const store = open(file);
@@ -402,6 +448,27 @@ describe('SQLite persistence', () => {
     second.finishTask(next.id);
     expect(second.repositories('live')[0]?.syncStatus).toBe('idle');
     expect(second.tasks('live')[0]?.status).toBe('completed');
+  });
+
+  it('reports the latest attempt timestamp by repository and mode after failed sync and restart', () => {
+    const file = path();
+    const first = open(file);
+    expect(first.latestSyncAttemptAt('live', 'example/project')).toBeNull();
+    const task = first.enqueueTask('live', 'example/project');
+    expect(first.latestSyncAttemptAt('live', 'example/project')).toBe(task.createdAt);
+    const running = first.claimTask('live')!;
+    expect(first.latestSyncAttemptAt('live', 'example/project')).toBe(running.startedAt);
+    first.finishTask(task.id, 'Synthetic upstream failure');
+    const completed = first.tasks('live')[0]!;
+    expect(first.latestSyncAttemptAt('live', 'example/project')).toBe(completed.finishedAt);
+    first.close();
+
+    const second = open(file);
+    expect(second.latestSyncAttemptAt('live', 'example/project')).toBe(completed.finishedAt);
+    expect(second.latestSyncAttemptAt('demo', 'example/project')).toBeNull();
+    expect(second.latestSyncAttemptAt('live', 'example/other')).toBeNull();
+    const next = second.enqueueTask('live', 'example/project');
+    expect(second.latestSyncAttemptAt('live', 'example/project')).toBe(next.createdAt);
   });
 
   it('bounds current log excerpts, audit history and notification history', () => {

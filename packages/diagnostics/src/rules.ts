@@ -136,8 +136,7 @@ export const requiredChecksRule: DiagnosticRule = {
         )
           continue;
         if (!matches.length) {
-          const complete =
-            pr.checksComplete !== false && snapshot.collectionState?.pullRequests !== false;
+          const complete = pr.checksComplete ?? snapshot.collectionState?.pullRequests !== false;
           output.push(
             finding(snapshot, 'pr.required-check-missing', subject, {
               type: 'pull_request',
@@ -200,6 +199,8 @@ export const reviewRequirementsRule: DiagnosticRule = {
   evaluate({ snapshot }) {
     const output: FindingInput[] = [];
     for (const pr of snapshot.pullRequests) {
+      // Older persisted snapshots used checksComplete for both checks and reviews.
+      const reviewsComplete = pr.reviewsComplete ?? pr.checksComplete !== false;
       if (pr.draft)
         output.push(
           finding(snapshot, 'pr.draft', String(pr.number), {
@@ -218,11 +219,14 @@ export const reviewRequirementsRule: DiagnosticRule = {
           finding(snapshot, 'pr.changes-requested', String(pr.number), {
             type: 'pull_request',
             severity: 'medium',
-            confidence: 'probable',
-            title: `PR #${pr.number} has requested changes`,
-            explanation:
-              'A current review requests changes. Whether it blocks merging depends on applicable review rules and reviewer permissions.',
-            recommendation: 'Address the review and ask the reviewer to review again.',
+            confidence: reviewsComplete ? 'probable' : 'insufficient_evidence',
+            title: `PR #${pr.number} has requested changes${reviewsComplete ? '' : ' in incomplete review evidence'}`,
+            explanation: reviewsComplete
+              ? 'A current review requests changes. Whether it blocks merging depends on applicable review rules and reviewer permissions.'
+              : 'An observed review requests changes, but review collection was incomplete. A later approval or dismissal may supersede it, so the current review state is not established.',
+            recommendation: reviewsComplete
+              ? 'Address the review and ask the reviewer to review again.'
+              : 'Restore review-read access or retry synchronization before evaluating the current review state.',
             evidence: prEvidence(pr),
             resourceUrl: pr.url,
           }),
@@ -232,20 +236,17 @@ export const reviewRequirementsRule: DiagnosticRule = {
         output.push(
           finding(snapshot, 'pr.missing-approvals', String(pr.number), {
             type: 'pull_request',
-            severity: pr.checksComplete === false ? 'info' : 'medium',
-            confidence: pr.checksComplete === false ? 'insufficient_evidence' : 'confirmed',
-            title:
-              pr.checksComplete === false
-                ? `PR #${pr.number} approval evidence is incomplete`
-                : `PR #${pr.number} needs more review approvals`,
-            explanation:
-              pr.checksComplete === false
-                ? 'Review collection was incomplete. The observed approval count cannot establish that approvals are missing.'
-                : `Observed ${pr.approvals} approval(s); the applicable policy requires ${pr.requiredApprovals}. Eligibility and stale-review rules can impose further requirements.`,
-            recommendation:
-              pr.checksComplete === false
-                ? 'Restore review-read access or retry synchronization before evaluating the approval requirement.'
-                : 'Request reviews from eligible reviewers and address their feedback.',
+            severity: reviewsComplete ? 'medium' : 'info',
+            confidence: reviewsComplete ? 'confirmed' : 'insufficient_evidence',
+            title: !reviewsComplete
+              ? `PR #${pr.number} approval evidence is incomplete`
+              : `PR #${pr.number} needs more review approvals`,
+            explanation: !reviewsComplete
+              ? 'Review collection was incomplete. The observed approval count cannot establish that approvals are missing.'
+              : `Observed ${pr.approvals} approval(s); the applicable policy requires ${pr.requiredApprovals}. Eligibility and stale-review rules can impose further requirements.`,
+            recommendation: !reviewsComplete
+              ? 'Restore review-read access or retry synchronization before evaluating the approval requirement.'
+              : 'Request reviews from eligible reviewers and address their feedback.',
             evidence: [
               ...prEvidence(pr),
               { label: 'Observed approvals', value: String(pr.approvals) },
@@ -479,7 +480,18 @@ export function authoritativeFindingTypes(snapshot: RepositorySnapshot): Finding
     ['config', 'configuration'],
   ];
   return sources
-    .filter(([source]) => snapshot.collectionState?.[source] !== false)
+    .filter(
+      ([source]) =>
+        snapshot.collectionState?.[source] !== false &&
+        (source !== 'pullRequests' ||
+          snapshot.pullRequests.every(
+            (pr) =>
+              pr.protectionKnown &&
+              pr.checksComplete !== false &&
+              pr.reviewsComplete !== false &&
+              (pr.mergeable !== null || pr.mergeableState === 'dirty'),
+          )),
+    )
     .map(([, type]) => type);
 }
 
