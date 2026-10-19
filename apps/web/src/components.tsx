@@ -256,10 +256,15 @@ export function RepositoryFilter() {
     </FilterSelect>
   );
 }
+function paginationState(total: number, size: number, requestedPage: string | null) {
+  const count = Math.max(1, Math.ceil(total / size));
+  const value = Number(requestedPage);
+  const page = Math.min(count, Math.max(1, Number.isFinite(value) ? Math.trunc(value) : 1));
+  return { count, page };
+}
 export function Pagination({ total, size = 12 }: { total: number; size?: number }) {
   const [params, setParams] = useSearchParams();
-  const count = Math.max(1, Math.ceil(total / size));
-  const page = Math.min(count, Math.max(1, Number(params.get('page')) || 1));
+  const { count, page } = paginationState(total, size, params.get('page'));
   const go = (value: number) =>
     setParams((previous) => {
       const next = new URLSearchParams(previous);
@@ -288,10 +293,7 @@ export function Pagination({ total, size = 12 }: { total: number; size?: number 
 }
 export function usePage<T>(values: T[], size = 12) {
   const [params] = useSearchParams();
-  const page = Math.min(
-    Math.max(1, Math.ceil(values.length / size)),
-    Math.max(1, Number(params.get('page')) || 1),
-  );
+  const { page } = paginationState(values.length, size, params.get('page'));
   return values.slice((page - 1) * size, page * size);
 }
 export function Cached({ repository }: { repository: RepositoryRecord }) {
