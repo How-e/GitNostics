@@ -647,7 +647,7 @@ export function RepositoryPage() {
         }
       />
       <div className="repo-detail-meta">
-        <Badge>{snapshot?.private ? 'Private' : 'Public'}</Badge>
+        <Badge>{snapshot ? (snapshot.private ? 'Private' : 'Public') : 'Visibility unknown'}</Badge>
         {snapshot?.language && <Badge>{snapshot.language}</Badge>}
         <span>
           <GitBranch size={14} />
