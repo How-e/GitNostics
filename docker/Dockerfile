@@ -1,5 +1,5 @@
 # Resolve and record an immutable base digest when publishing a release.
-FROM node:24-bookworm-slim AS base
+FROM node:26-bookworm-slim AS base
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@11.25.0 --activate
 
@@ -23,7 +23,7 @@ COPY packages/github/package.json packages/github/package.json
 COPY packages/diagnostics/package.json packages/diagnostics/package.json
 RUN pnpm install --prod --frozen-lockfile
 
-FROM node:24-bookworm-slim AS runtime
+FROM node:26-bookworm-slim AS runtime
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=4311 DATA_DIR=/app/data PUBLIC_ORIGIN=http://127.0.0.1:4311
 WORKDIR /app
 COPY --from=production-dependencies --chown=node:node /app/node_modules ./node_modules
