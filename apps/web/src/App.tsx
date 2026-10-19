@@ -90,6 +90,8 @@ export function App() {
   const [pending, setPending] = useState(0);
   const [toast, setToast] = useState<{ message: string; error?: boolean }>();
   const [mobile, setMobile] = useState(false);
+  const [narrow, setNarrow] = useState(() => window.matchMedia('(max-width: 800px)').matches);
+  const sidebar = useRef<HTMLElement>(null);
   const [notifications, setNotifications] = useState(false);
   const [findingId, setFindingId] = useState<string>();
   const [actionPreview, setActionPreview] = useState<ActionPreview>();
@@ -135,12 +137,71 @@ export function App() {
     if (session.data) setCsrfToken(session.data.csrfToken);
   }, [session.data]);
   const data = dashboard.data;
+  const shellAvailable = Boolean(
+    session.data && (!session.data.requiresLogin || session.data.authenticated),
+  );
   const syncing =
     data?.repositories.some((r) => ['queued', 'syncing'].includes(r.syncStatus)) ?? false;
   useEffect(() => {
     setMobile(false);
     window.scrollTo(0, 0);
   }, [location.pathname]);
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 800px)');
+    const update = () => {
+      setNarrow(media.matches);
+      if (!media.matches) setMobile(false);
+    };
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  useEffect(() => {
+    if (!shellAvailable) {
+      setMobile(false);
+      return;
+    }
+    if (!mobile || !narrow || !sidebar.current) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const navigation = sidebar.current;
+    const controls = () => [
+      ...navigation.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex="0"]',
+      ),
+    ];
+    controls()[0]?.focus();
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMobile(false);
+      } else if (event.key === 'Tab') {
+        const elements = controls();
+        const first = elements[0];
+        const last = elements.at(-1);
+        if (
+          event.shiftKey &&
+          (document.activeElement === first || !navigation.contains(document.activeElement))
+        ) {
+          event.preventDefault();
+          last?.focus();
+        } else if (
+          !event.shiftKey &&
+          (document.activeElement === last || !navigation.contains(document.activeElement))
+        ) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', keydown);
+    return () => {
+      document.removeEventListener('keydown', keydown);
+      document.body.style.overflow = overflow;
+      if (previous?.isConnected && window.matchMedia('(max-width: 800px)').matches)
+        previous.focus();
+    };
+  }, [mobile, narrow, shellAvailable]);
   useEffect(() => {
     if (!toast) return;
     const timeout = window.setTimeout(() => setToast(undefined), toast.error ? 10_000 : 4_000);
@@ -317,14 +378,31 @@ export function App() {
   const busy = pending > 0;
   return (
     <div className="app-shell">
-      {mobile && (
+      {mobile && narrow && (
         <button
           className="mobile-backdrop"
-          aria-label="Close navigation"
+          tabIndex={-1}
+          aria-label="Close navigation backdrop"
           onClick={() => setMobile(false)}
         />
       )}
-      <aside className={`sidebar ${mobile ? 'is-open' : ''}`} aria-label="Main navigation">
+      <aside
+        ref={sidebar}
+        id="workspace-navigation"
+        className={`sidebar ${mobile && narrow ? 'is-open' : ''}`}
+        aria-label="Main navigation"
+        aria-hidden={narrow && !mobile ? true : undefined}
+        inert={narrow && !mobile}
+        role={narrow ? 'dialog' : undefined}
+        aria-modal={narrow && mobile ? true : undefined}
+      >
+        <IconButton
+          label="Close navigation"
+          className="icon-button mobile-nav-close"
+          onClick={() => setMobile(false)}
+        >
+          <X size={18} />
+        </IconButton>
         <Link className="brand" to="/">
           <div className="brand-symbol">
             <Terminal size={23} strokeWidth={2.4} />
@@ -411,11 +489,13 @@ export function App() {
           </div>
         </div>
       </aside>
-      <div className="main-shell">
+      <div className="main-shell" inert={narrow && mobile}>
         <header className="topbar">
           <div className="breadcrumb">
             <IconButton
               label="Open navigation"
+              aria-controls="workspace-navigation"
+              aria-expanded={mobile && narrow}
               onClick={() => setMobile(true)}
               className="icon-button mobile-menu"
             >

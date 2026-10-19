@@ -3324,3 +3324,18 @@ summary::-webkit-details-marker {
   gap: 15px;
   color: var(--muted);
 }
+
+.mobile-nav-close {
+  display: none;
+}
+@media (max-width: 800px) {
+  .sidebar:not(.is-open) {
+    visibility: hidden;
+  }
+  .mobile-nav-close {
+    display: inline-flex;
+    position: absolute;
+    top: 8px;
+    right: 8px;
+  }
+}

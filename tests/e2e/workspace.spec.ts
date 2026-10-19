@@ -137,3 +137,43 @@ test('keeps navigation and content usable on a narrow mobile viewport', async ({
   expect(horizontalOverflow).toBe(false);
   await page.screenshot({ path: '.local/qa-mobile-storage.png', fullPage: true });
 });
+
+test('keeps mobile navigation keyboard focus visible and restores it on close', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await enterDemo(page);
+  const trigger = page.getByRole('button', { name: 'Open navigation' });
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#workspace-navigation')).toHaveAttribute('inert', '');
+  for (let index = 0; index < 12; index += 1) {
+    await page.keyboard.press('Tab');
+    expect(await page.evaluate(() => Boolean(document.activeElement?.closest('.sidebar')))).toBe(
+      false,
+    );
+  }
+  await trigger.click();
+  const drawer = page.getByRole('dialog', { name: 'Main navigation' });
+  const close = drawer.getByRole('button', { name: 'Close navigation', exact: true });
+  await expect(close).toBeFocused();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('.main-shell')).toHaveAttribute('inert', '');
+  await drawer.getByRole('link', { name: 'Settings', exact: true }).focus();
+  await page.keyboard.press('Tab');
+  await expect(close).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(drawer.getByRole('link', { name: 'Settings', exact: true })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(drawer).not.toBeVisible();
+  await expect(trigger).toBeFocused();
+  await expect(page.locator('.main-shell')).not.toHaveAttribute('inert');
+  await trigger.click();
+  await page.getByRole('dialog').getByRole('link', { name: 'Storage', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Artifact & storage analysis' })).toBeVisible();
+  await expect(trigger).toBeFocused();
+  await trigger.click();
+  await page.setViewportSize({ width: 1100, height: 844 });
+  await expect(page.getByRole('dialog', { name: 'Main navigation' })).not.toBeVisible();
+  await expect(page.locator('#workspace-navigation')).not.toHaveAttribute('inert');
+  await expect(page.getByRole('link', { name: 'Repositories', exact: true })).toBeVisible();
+});
