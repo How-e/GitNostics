@@ -2,6 +2,8 @@
 
 Use Windows 11 or Linux with Node.js 24.13+ in a supported LTS line, Git, and pnpm 11.25.0. Node's built-in SQLite support is part of the runtime requirement. Dependency versions and scripts live at the workspace root.
 
+Tracked text uses LF line endings through `.gitattributes`, including Windows checkouts with `core.autocrlf=true`, so `pnpm format:check` uses the same files as Linux CI. Existing checkouts with CRLF files can run `pnpm format` once; review the diff before committing. No machine-wide Git setting change is required.
+
 ```sh
 corepack enable
 corepack prepare pnpm@11.25.0 --activate
