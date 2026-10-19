@@ -113,6 +113,9 @@ export function App() {
     if (session.data) setCsrfToken(session.data.csrfToken);
   }, [session.data]);
   const data = dashboard.data;
+  const shellAvailable = Boolean(
+    session.data && (!session.data.requiresLogin || session.data.authenticated),
+  );
   const syncing =
     data?.repositories.some((r) => ['queued', 'syncing'].includes(r.syncStatus)) ?? false;
   useEffect(() => {
@@ -129,6 +132,10 @@ export function App() {
     return () => media.removeEventListener('change', update);
   }, []);
   useEffect(() => {
+    if (!shellAvailable) {
+      setMobile(false);
+      return;
+    }
     if (!mobile || !narrow || !sidebar.current) return;
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const navigation = sidebar.current;
@@ -170,7 +177,7 @@ export function App() {
       if (previous?.isConnected && window.matchMedia('(max-width: 800px)').matches)
         previous.focus();
     };
-  }, [mobile, narrow]);
+  }, [mobile, narrow, shellAvailable]);
   useEffect(() => {
     if (!toast) return;
     const timeout = window.setTimeout(() => setToast(undefined), toast.error ? 10_000 : 4_000);
