@@ -15,8 +15,10 @@ export const relative = (value?: string | null) => {
         ? `${Math.floor(minutes / 60)}h ago`
         : `${Math.floor(minutes / 1440)}d ago`;
 };
-export const duration = (seconds: number) =>
-  `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+export const duration = (seconds: number) => {
+  const rounded = Number.isFinite(seconds) ? Math.max(0, Math.round(seconds)) : 0;
+  return `${Math.floor(rounded / 60)}m ${rounded % 60}s`;
+};
 export const unresolved = (finding: Finding) =>
   !['resolved', 'suppressed'].includes(finding.status);
 export const failed = (run: WorkflowRun) =>
