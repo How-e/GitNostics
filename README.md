@@ -82,8 +82,8 @@ pnpm audit --prod --audit-level high
 
 See [development](docs/DEVELOPMENT.md), [architecture](docs/ARCHITECTURE.md), [API](docs/API.md), and the dependency-ordered [roadmap](docs/ROADMAP.md). Contributions should include evidence for diagnostic claims and preserve safe defaults. See [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
-Before uploading, follow the [publication privacy checklist](docs/PUBLICATION_PRIVACY.md). Ignore rules do not remove committed files, and Git history includes author/committer identities.
+The source is public at [How-e/GitNostics](https://github.com/How-e/GitNostics). Before pushing contributions, follow the [publication privacy checklist](docs/PUBLICATION_PRIVACY.md). Ignore rules do not remove committed files, and Git history includes author/committer identities.
 
-Read the [data handling notice](docs/PRIVACY.md), [support guidance](docs/SUPPORT.md), and [integration readiness checklist](docs/INTEGRATION_READINESS.md) before sharing or operating an installation. Contact [GitNostics@protonmail.com](mailto:GitNostics@protonmail.com) for support. External mailbox receipt and App homepage settings remain unverified; hosted verification evidence is recorded in implementation status.
+Read the [data handling notice](docs/PRIVACY.md), [support guidance](docs/SUPPORT.md), and [integration readiness checklist](docs/INTEGRATION_READINESS.md) before sharing or operating an installation. Contact [GitNostics@protonmail.com](mailto:GitNostics@protonmail.com) for support; the maintainer confirmed successful email delivery to this mailbox on 2026-10-18. Report reproducible bugs or request features through [GitHub Issues](https://github.com/How-e/GitNostics/issues). App homepage and integration contact settings remain unverified; hosted verification evidence is recorded in implementation status.
 
 Licensed under the [MIT License](LICENSE).

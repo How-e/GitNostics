@@ -1,5 +1,14 @@
 {
   "name": "gitnostics",
+  "description": "Self-hosted GitHub diagnostics for pull requests, Actions failures, artifact storage, and configuration drift. Read-only by default.",
+  "homepage": "https://github.com/How-e/GitNostics#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/How-e/GitNostics.git"
+  },
+  "bugs": {
+    "url": "https://github.com/How-e/GitNostics/issues"
+  },
   "version": "0.1.0",
   "private": true,
   "type": "module",

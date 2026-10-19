@@ -2,7 +2,7 @@
 
 GitNostics is an initial implementation. No public release is currently certified as production-ready; [implementation status](docs/IMPLEMENTATION_STATUS.md) records the actual verification boundary. Security fixes target the current development line until a supported-release policy is published.
 
-Please report vulnerabilities privately. Use the repository's **Security → Advisories → Report a vulnerability** option if enabled, or email [GitNostics@protonmail.com](mailto:GitNostics@protonmail.com). The address is maintainer-approved; external delivery and receipt have not been verified in this checkout. Do not open a public issue containing credentials, private repository information, or an active exploit.
+Please report vulnerabilities privately. Use the repository's **Security → Advisories → Report a vulnerability** option if enabled, or email [GitNostics@protonmail.com](mailto:GitNostics@protonmail.com). The maintainer confirmed successful email delivery to this mailbox on 2026-10-18. Do not open a public issue containing credentials, private repository information, or an active exploit.
 
 Include affected version/commit, deployment model, reproduction steps, impact, and a sanitized proof of concept. Never include real tokens, private keys, raw private workflow logs, or database exports. There is no promised response time or bug bounty.
 

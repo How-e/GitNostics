@@ -22,7 +22,7 @@ Connectivity hardening now covers conditional-cache authentication recovery, val
 
 Synthetic HTTP integration coverage verifies authenticated discovery, partial-result propagation, sanitized upstream failures, disconnection without repository creation, and retention of selected repositories, warning/coverage metadata and the last successful timestamp across a failed sync and process restart. GitHub transport fixtures cover installation-token renewal, membership changes, permissions, pagination, retry/rate-limit handling and active/queued request cancellation. These are fixture checks, not additional real-installation acceptance. No GitHub mutations were performed.
 
-The approved public support contact is documented in [support guidance](SUPPORT.md). [Integration readiness](INTEGRATION_READINESS.md) separately tracks external mailbox receipt, publication/hosted CI, and detailed read-only acceptance.
+The repository is public at [How-e/GitNostics](https://github.com/How-e/GitNostics); anonymous GitHub API and README reads confirmed public availability on 2026-10-18. The operator confirmed successful email delivery to the documented support mailbox on the same date. Mailbox delivery is operator-reported evidence; no test email was sent by the agent. [Integration readiness](INTEGRATION_READINESS.md) separately tracks App homepage/contact settings, hosted CI, and detailed read-only acceptance. Public source availability and a working support mailbox do not establish release readiness.
 
 ### M2 PR diagnostic follow-through
 
