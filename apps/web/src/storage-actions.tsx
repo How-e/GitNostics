@@ -386,6 +386,7 @@ export function SafeActionsPage() {
     setRepository(params.get('repo') ?? data.repositories[0]?.fullName ?? '');
     setRunId('');
     setWorkflowId('');
+    setRef('');
   }, [mode, params, data.repositories.length]);
   return (
     <>
