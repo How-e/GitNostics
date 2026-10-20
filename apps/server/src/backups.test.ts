@@ -15,6 +15,35 @@ import { Store } from './db';
 import { Backups } from './backups';
 
 describe('bounded automatic backups', () => {
+  it('retains the newly completed backup when older copies have future modification times', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'gitnostics-backup-clock-'));
+    const store = new Store(join(directory, 'source.sqlite'));
+    const backups = new Backups(store, directory);
+    try {
+      const backupDirectory = join(directory, 'backups');
+      for (let i = 0; i < 7; i++) await backups.create();
+      const future = new Date(Date.now() + 24 * 3600_000);
+      for (const name of readdirSync(backupDirectory))
+        utimesSync(join(backupDirectory, name), future, future);
+      store.upsertRepository('live', 'example/newest');
+      const filename = await backups.create();
+      expect(readdirSync(backupDirectory)).toHaveLength(7);
+      expect(readdirSync(backupDirectory)).toContain(filename);
+      const restored = new DatabaseSync(join(backupDirectory, filename), { readOnly: true });
+      try {
+        expect(restored.prepare('SELECT full_name FROM repositories').get()).toMatchObject({
+          full_name: 'example/newest',
+        });
+      } finally {
+        restored.close();
+      }
+    } finally {
+      await backups.close();
+      store.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('preserves an active copy even if its modification time becomes stale', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'gitnostics-backup-active-'));
     const store = new Store(join(directory, 'source.sqlite'));
