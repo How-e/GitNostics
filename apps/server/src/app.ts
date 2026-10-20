@@ -180,11 +180,11 @@ export async function createApp(
     return settings;
   });
   app.post('/api/demo/reset', async () => {
-    if (store.repositories('demo').some((r) => ['queued', 'syncing'].includes(r.syncStatus)))
+    if (store.repositorySummaries('demo').some((r) => ['queued', 'syncing'].includes(r.syncStatus)))
       throw Object.assign(new Error('Cancel demo synchronization before resetting fixtures.'), {
         statusCode: 409,
       });
-    for (const repository of store.repositories('demo'))
+    for (const repository of store.repositorySummaries('demo'))
       store.removeRepository('demo', repository.fullName);
     for (const snapshot of demoSnapshots()) {
       store.upsertRepository('demo', snapshot.fullName, {
@@ -227,8 +227,8 @@ export async function createApp(
         .code(409)
         .send({ error: 'Connection disconnected. Restart after configuring access.' });
     if (
-      store.repositories(mode).length >= 100 &&
-      !store.repositories(mode).some((r) => r.fullName === fullName)
+      store.repositorySummaries(mode).length >= 100 &&
+      !store.repositorySummaries(mode).some((r) => r.fullName === fullName)
     )
       return reply
         .code(400)

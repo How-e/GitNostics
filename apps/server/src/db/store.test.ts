@@ -168,6 +168,40 @@ describe('SQLite persistence', () => {
     inspected.close();
   });
 
+  it('returns repository metadata without loading snapshots, preserving ordering and mode isolation', () => {
+    const file = path();
+    const first = open(file);
+    first.saveSnapshot('live', snapshot());
+    first.upsertRepository('live', 'example/project', {
+      favorite: true,
+      selected: false,
+      syncStatus: 'error',
+      error: 'Synthetic read failure',
+    });
+    first.upsertRepository('live', 'Example/aaa');
+    first.saveSnapshot('demo', snapshot());
+    const expected = first
+      .repositories('live')
+      .map(({ snapshot: _snapshot, ...metadata }) => metadata);
+    expect(first.repositorySummaries('live')).toEqual(expected);
+    first.close();
+    // Metadata operations must remain independent of snapshot decoding, including
+    // during recovery from a damaged snapshot payload.
+    const raw = new DatabaseSync(file);
+    raw.exec("UPDATE repositories SET snapshot_json='invalid JSON' WHERE mode='live'");
+    raw.close();
+    const second = open(file);
+    expect(second.repositorySummaries('live')).toEqual(expected);
+    expect(second.repositorySummaries('live').map((row) => row.fullName)).toEqual([
+      'Example/aaa',
+      'example/project',
+    ]);
+    expect(second.repositorySummaries('demo')).toHaveLength(1);
+    expect(second.repositorySummaries('live').every((row) => !Object.hasOwn(row, 'snapshot'))).toBe(
+      true,
+    );
+  });
+
   it('refuses a schema created by a newer application', () => {
     const file = path();
     const db = new DatabaseSync(file);
