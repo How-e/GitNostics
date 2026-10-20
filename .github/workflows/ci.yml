@@ -29,8 +29,8 @@ jobs:
         run: corepack enable && corepack prepare pnpm@11.25.0 --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Static and secret checks
-        run: pnpm exec concurrently --names format,lint,types,privacy --success all "pnpm format:check" "pnpm lint" "pnpm typecheck" "pnpm test:privacy"
+      - name: Static checks and browser setup
+        run: pnpm exec concurrently --names format,lint,types,privacy,browser --success all "pnpm format:check" "pnpm lint" "pnpm typecheck" "pnpm test:privacy" "pnpm exec playwright install --with-deps --only-shell chromium"
       - name: Unit and integration tests
         run: pnpm test
       - name: Production build
@@ -39,8 +39,6 @@ jobs:
         run: pnpm test:production
       - name: Production dependency audit
         run: pnpm audit --prod --audit-level high
-      - name: Install isolated browser
-        run: pnpm exec playwright install --with-deps --only-shell chromium
       - name: Browser workflows
         run: pnpm test:e2e
 
