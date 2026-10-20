@@ -22,7 +22,7 @@ export class SyncManager {
     this.timer = setInterval(() => {
       const interval = this.store.settings('live').syncIntervalMinutes;
       if (interval > 0)
-        for (const repository of this.store.repositories('live')) {
+        for (const repository of this.store.repositorySummaries('live')) {
           const lastAttempt = this.store.latestSyncAttemptAt('live', repository.fullName);
           const lastRefresh = Math.max(
             repository.syncedAt ? Date.parse(repository.syncedAt) : 0,
@@ -38,7 +38,7 @@ export class SyncManager {
   queue(mode: DataMode, repository?: string): number {
     if (this.closed || (mode === 'live' && !this.liveEnabled)) return 0;
     const repositories = this.store
-      .repositories(mode)
+      .repositorySummaries(mode)
       .filter((r) => r.selected && (!repository || r.fullName === repository));
     let count = 0;
     for (const record of repositories) {
@@ -76,7 +76,7 @@ export class SyncManager {
         if (!task) break;
         if (
           !this.store
-            .repositories(mode)
+            .repositorySummaries(mode)
             .some((repository) => repository.fullName === task.repository && repository.selected)
         ) {
           this.store.cancelTask(mode, task.id);
@@ -107,7 +107,9 @@ export class SyncManager {
         );
       snapshot.fullName = repository;
       // A removed/deselected repository must not be recreated by a late response.
-      if (!this.store.repositories(mode).some((r) => r.fullName === repository && r.selected)) {
+      if (
+        !this.store.repositorySummaries(mode).some((r) => r.fullName === repository && r.selected)
+      ) {
         this.store.cancelTask(mode, id);
         return;
       }
@@ -136,7 +138,7 @@ export class SyncManager {
       const message = cancelled ? 'Synchronization cancelled.' : safeMessage(error);
       if (cancelled) this.store.cancelTask(mode, id);
       else this.store.finishTask(id, message);
-      if (this.store.repositories(mode).some((r) => r.fullName === repository))
+      if (this.store.repositorySummaries(mode).some((r) => r.fullName === repository))
         this.store.upsertRepository(mode, repository, {
           syncStatus: cancelled ? 'idle' : 'error',
           error: cancelled ? null : message,

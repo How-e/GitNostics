@@ -31,6 +31,17 @@ afterEach(async () => {
 });
 
 describe('synchronization orchestration without outbound GitHub requests', () => {
+  it('schedules and completes work without loading unrelated repository snapshots', async () => {
+    const { store, sync } = context({ snapshot: vi.fn(async () => demoSnapshots()[0]!) });
+    store.upsertRepository('live', 'northstar/api');
+    const fullReads = vi.spyOn(store, 'repositories').mockImplementation(() => {
+      throw new Error('Scheduling must read repository metadata only');
+    });
+    expect(sync.queue('live')).toBe(1);
+    await vi.waitFor(() => expect(store.tasks('live')[0]!.status).toBe('completed'));
+    expect(fullReads).not.toHaveBeenCalled();
+  });
+
   it('preserves acknowledged PR evidence through incomplete sync and resolves it only with complete collection', async () => {
     const snapshot = demoSnapshots()[0]!;
     const complete = { pullRequests: true, runs: true, artifacts: true, config: true };

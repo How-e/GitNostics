@@ -131,7 +131,9 @@ function encoded(value: unknown, maximumBytes = 8 * 1024 * 1024): string {
     throw new Error('Persistence payload exceeds its bounded size.');
   return json;
 }
-function repositoryRecord(row: RepositoryRow): RepositoryRecord {
+function repositorySummary(
+  row: Omit<RepositoryRow, 'snapshot_json'>,
+): Omit<RepositoryRecord, 'snapshot'> {
   return {
     fullName: row.full_name,
     mode: row.mode,
@@ -140,6 +142,11 @@ function repositoryRecord(row: RepositoryRow): RepositoryRecord {
     syncedAt: row.synced_at,
     syncStatus: row.sync_status,
     error: row.error,
+  };
+}
+function repositoryRecord(row: RepositoryRow): RepositoryRecord {
+  return {
+    ...repositorySummary(row),
     snapshot: row.snapshot_json ? (JSON.parse(row.snapshot_json) as RepositorySnapshot) : null,
   };
 }
@@ -233,6 +240,13 @@ export class Store {
       'SELECT * FROM repositories WHERE mode = ? ORDER BY full_name COLLATE NOCASE',
       mode,
     ).map(repositoryRecord);
+  }
+  repositorySummaries(mode: DataMode): Omit<RepositoryRecord, 'snapshot'>[] {
+    return this.#all<Omit<RepositoryRow, 'snapshot_json'>>(
+      `SELECT mode,full_name,favorite,selected,synced_at,sync_status,error
+       FROM repositories WHERE mode = ? ORDER BY full_name COLLATE NOCASE`,
+      mode,
+    ).map(repositorySummary);
   }
   async queryRepositories(mode: DataMode): Promise<RepositoryRecord[]> {
     const rows = await this.#orm
