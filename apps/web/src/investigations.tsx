@@ -82,8 +82,7 @@ export function PullRequestsPage() {
       (f) =>
         f.repository === row.repository.fullName &&
         f.type === 'pull_request' &&
-        (f.resourceUrl === row.pr.url ||
-          f.evidence.some((e) => e.url === row.pr.url)) &&
+        (f.resourceUrl === row.pr.url || f.evidence.some((e) => e.url === row.pr.url)) &&
         unresolved(f),
     );
   const rows = data.repositories
