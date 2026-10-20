@@ -19,9 +19,8 @@ export function fingerprint(...parts: string[]): string {
 export function redactLog(input: string): string {
   const prefix = input.slice(0, LOG_LIMITS.bytes + 1);
   const bounded = boundedUtf8(prefix, LOG_LIMITS.bytes);
-  const lines = bounded.split(/\r?\n/, LOG_LIMITS.lines);
   // eslint-disable-next-line no-control-regex -- ANSI control sequences are intentionally removed.
-  const text = lines.join('\n').replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '');
+  const text = bounded.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '');
   const redacted = text
     // Preserve quoted JSON/curl context while removing every cookie in a header value.
     .replace(
@@ -57,6 +56,9 @@ export function redactLog(input: string): string {
       '$1[REDACTED]',
     )
     .split('\n')
+    // Persisted GitHub excerpts already contain the tail. Keep terminal errors
+    // after redacting the entire bounded input, including multiline secrets.
+    .slice(-LOG_LIMITS.lines)
     .map((line) => line.slice(0, LOG_LIMITS.lineCharacters))
     .join('\n');
   return boundedUtf8(redacted, LOG_LIMITS.bytes);

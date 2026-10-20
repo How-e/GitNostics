@@ -477,6 +477,27 @@ describe('accessible configuration drift', () => {
 });
 
 describe('bounded log classification and correlation', () => {
+  it('keeps terminal failures when a persisted excerpt has more than 500 short lines', () => {
+    const log = `${'progress\n'.repeat(600)}error TS2322: terminal compile failure`;
+    const result = classifyFailure(log);
+    expect(result.category).toBe('compilation');
+    expect(result.excerpt).toContain('terminal compile failure');
+    expect(result.excerpt.split('\n')).toHaveLength(LOG_LIMITS.lines);
+  });
+
+  it('redacts multiline secrets before selecting the final diagnostic lines', () => {
+    const log = [
+      '-----BEGIN PRIVATE KEY-----',
+      ...Array.from({ length: 600 }, () => 'fixture-private-material'),
+      '-----END PRIVATE KEY-----',
+      'error TS2322: terminal compile failure',
+    ].join('\n');
+    const result = classifyFailure(log);
+    expect(result.category).toBe('compilation');
+    expect(result.excerpt).not.toContain('fixture-private-material');
+    expect(result.excerpt).toContain('[REDACTED PRIVATE KEY]');
+  });
+
   it('removes signed URL credentials from excerpts and unknown failure signatures', () => {
     const source =
       'failure https://example.test/log?sig=fixture-sig&X-Amz-Credential=fixture-credential&signature=fixture-signature';
