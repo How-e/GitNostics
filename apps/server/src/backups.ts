@@ -59,8 +59,11 @@ export class Backups {
         if (existsSync(temporary)) unlinkSync(temporary);
         throw error;
       }
+      // Always retain the copy just completed, even after a backward clock change.
       // Only enumerated regular files with generated names can be rotated; never directories.
-      for (const entry of this.inventory().slice(7))
+      for (const entry of this.inventory()
+        .filter((entry) => entry.name !== filename)
+        .slice(6))
         unlinkSync(resolve(this.directory, entry.name));
       this.store.audit(
         'live',
