@@ -95,6 +95,7 @@ export function App() {
   const [notifications, setNotifications] = useState(false);
   const [findingId, setFindingId] = useState<string>();
   const [actionPreview, setActionPreview] = useState<ActionPreview>();
+  const [actionFeedback, setActionFeedback] = useState<{ previewId: string; message: string }>();
   const [confirmation, setConfirmation] = useState('');
   const [operatorToken, setOperatorToken] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -249,6 +250,7 @@ export function App() {
       'Impact preview ready',
     );
     if (result) {
+      setActionFeedback(undefined);
       setActionPreview(result);
       setConfirmation('');
     }
@@ -733,6 +735,8 @@ export function App() {
                   Date.parse(actionPreview.expiresAt) < Date.now()
                 }
                 onClick={() => {
+                  const previewId = actionPreview.id;
+                  setActionFeedback(undefined);
                   void mutate(
                     '/api/actions/execute',
                     { previewId: actionPreview.id, confirmation },
@@ -743,6 +747,12 @@ export function App() {
                     if (result !== undefined) {
                       setActionPreview(undefined);
                       setConfirmation('');
+                    } else {
+                      setActionFeedback({
+                        previewId,
+                        message:
+                          'The operation could not be completed. Refresh the preview and review permissions before trying again.',
+                      });
                     }
                   });
                 }}
@@ -751,6 +761,11 @@ export function App() {
                 {actionPreview.mode === 'demo' ? 'Simulate action' : 'Confirm and execute'}
               </button>
             </div>
+            {actionFeedback?.previewId === actionPreview.id && (
+              <p role="alert" className="error-message">
+                {actionFeedback.message}
+              </p>
+            )}
           </>
         )}
       </Modal>
