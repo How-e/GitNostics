@@ -80,7 +80,7 @@ describe('action confirmation feedback', () => {
     });
     fireEvent.click(modal.getByRole('button', { name: 'Simulate action' }));
     expect((await modal.findByRole('alert')).textContent).toContain(
-      'The operation could not be completed.',
+      'The operation could not be confirmed.',
     );
     expect(modal.getByRole('button', { name: 'Simulate action' }).hasAttribute('disabled')).toBe(
       false,

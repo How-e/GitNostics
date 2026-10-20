@@ -751,7 +751,7 @@ export function App() {
                       setActionFeedback({
                         previewId,
                         message:
-                          'The operation could not be completed. Refresh the preview and review permissions before trying again.',
+                          'The operation could not be confirmed. Review Activity and GitHub before preparing a new preview; part of the operation may have completed.',
                       });
                     }
                   });
