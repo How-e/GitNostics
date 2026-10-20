@@ -104,6 +104,59 @@ function view(
 afterEach(cleanup);
 
 describe('pull request evidence visibility', () => {
+  const otherPRFinding: Finding = {
+    id: 'other-pr',
+    mode: 'live',
+    status: 'new',
+    ruleId: 'pr.missing-approvals',
+    ruleVersion: 1,
+    fingerprint: 'other-pr',
+    repository: 'example/project',
+    type: 'pull_request',
+    severity: 'medium',
+    confidence: 'confirmed',
+    title: 'PR #2 needs more review approvals',
+    explanation: 'A separate PR needs approval.',
+    recommendation: 'Review PR #2.',
+    resourceUrl: 'https://github.com/example/project/pull/2',
+    evidence: [{ label: 'Required approvals', value: '1' }],
+    firstDetectedAt: completePR.updatedAt,
+    lastObservedAt: completePR.updatedAt,
+  };
+
+  it.each(['Required approvals', 'Required app ID', 'Commits behind'])(
+    'does not associate a different PR through a matching numeric %s value',
+    (label) => {
+      render(
+        view(
+          completePR,
+          [{ ...otherPRFinding, evidence: [{ label, value: '1' }] }],
+          '/pull-requests?state=blocked',
+        ),
+      );
+      expect(screen.getByText('No pull requests in this view')).toBeTruthy();
+    },
+  );
+
+  it('associates check-linked findings through their explicit pull request evidence URL', () => {
+    render(
+      view(
+        completePR,
+        [
+          {
+            ...otherPRFinding,
+            resourceUrl: 'https://github.com/example/project/actions/runs/123',
+            evidence: [
+              { label: 'Pull request', value: '#1 Complete evidence', url: completePR.url },
+            ],
+          },
+        ],
+        '/pull-requests?state=blocked',
+      ),
+    );
+    expect(screen.getByText('1 diagnostic finding')).toBeTruthy();
+  });
+
   it.each(['head', 'merge', undefined] as const)(
     'does not attribute empty check evidence to the head when source is %s',
     (checksSource) => {
