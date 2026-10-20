@@ -100,6 +100,7 @@ export function App() {
   const [loginError, setLoginError] = useState('');
   const [sessionEpoch, setSessionEpoch] = useState(0);
   const sessionGeneration = useRef(0);
+  const workspaceGeneration = useRef(0);
   const resetSession = useCallback(() => {
     sessionGeneration.current += 1;
     void client.cancelQueries({ queryKey: ['dashboard'] });
@@ -226,17 +227,19 @@ export function App() {
     method = 'POST',
   ): Promise<T | undefined> {
     const generation = sessionGeneration.current;
+    const workspace = workspaceGeneration.current;
+    const current = () =>
+      generation === sessionGeneration.current && workspace === workspaceGeneration.current;
     setPending((value) => value + 1);
     try {
       const result = await api<T>(path, { method, body, mode });
-      if (generation !== sessionGeneration.current) return undefined;
+      if (!current()) return undefined;
       await client.invalidateQueries({ queryKey: ['dashboard', mode] });
-      if (generation !== sessionGeneration.current) return undefined;
+      if (!current()) return undefined;
       setToast({ message: success });
       return result;
     } catch (error) {
-      if (generation === sessionGeneration.current)
-        setToast({ message: errorMessage(error), error: true });
+      if (current()) setToast({ message: errorMessage(error), error: true });
       return undefined;
     } finally {
       setPending((value) => value - 1);
@@ -255,6 +258,7 @@ export function App() {
   }
   async function switchMode() {
     if (mode === 'demo') {
+      workspaceGeneration.current += 1;
       setMode('live');
       rememberMode('live');
       setFindingId(undefined);
@@ -267,6 +271,7 @@ export function App() {
       'Demo workspace ready. All data and actions are simulated.',
     );
     if (result !== undefined) {
+      workspaceGeneration.current += 1;
       setMode('demo');
       rememberMode('demo');
       setFindingId(undefined);
